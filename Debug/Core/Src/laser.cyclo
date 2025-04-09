@@ -1,0 +1,15 @@
+../Core/Src/laser.c:19:6:spi_transmit_package	1
+../Core/Src/laser.c:27:6:spi_set_device_type	1
+../Core/Src/laser.c:40:6:spi_set_laser_param	1
+../Core/Src/laser.c:63:6:spi_get_laser_param	1
+../Core/Src/laser.c:76:6:spi_set_power_laser	1
+../Core/Src/laser.c:90:6:spi_get_current_param	1
+../Core/Src/laser.c:103:6:spi_set_work_mode	1
+../Core/Src/laser.c:116:6:spi_set_duty_mode	1
+../Core/Src/laser.c:129:6:spi_pilot_switch	1
+../Core/Src/laser.c:142:6:spi_get_operating_time_counter	1
+../Core/Src/laser.c:155:6:spi_reset_operating_time_counter	1
+../Core/Src/laser.c:168:6:spi_set_current_time	1
+../Core/Src/laser.c:187:6:spi_get_current_time	1
+../Core/Src/laser.c:200:6:spi_send_emergency_message	1
+../Core/Src/laser.c:214:6:spi_get_last_logs	1
