@@ -16,9 +16,14 @@ char rxBuf[128] = {0};
 /* Счетчик принятых сообщений */
 int counter = 0;
 
+/* --------------------------------------- Прототипы функций библиотеки net.h --------------------------------------- */
+
 void udpSocketInit(void);
 void udpReceiveCallback(void *arg, struct udp_pcb *upcb, struct pbuf *p, const ip_addr_t *addr, u16_t port);
-void udpClientSend();
+void udpReceiveHandler(void);
+void udpClientSend(char *buf);
+
+/* --------------------------------------- Прототипы функций библиотеки net.h --------------------------------------- */
 
 /** Функция инициализации UDP сетевого интерфейса
  */
@@ -58,9 +63,12 @@ void udpReceiveCallback(void *arg, struct udp_pcb *upcb, struct pbuf *p, const i
 	pbuf_free(p);
 
 	char data[256];
-	sprintf(data, "UDP: Message has been delivered. Echo: counter = %d;\n", counter);
+	sprintf(data, "STM32: number of message received = %d\n", counter);
 
 	udpClientSend(data);
+
+	/* Вызов обработчик принятных сообщений */
+	udpReceiveHandler();
 }
 
 /** Функция отправки сообщения по UDP
@@ -83,7 +91,44 @@ void udpClientSend(char *buf)
 	}
 }
 
-
-
+//void udp_receive_handler(void)
+//{
+//	char txBuf[128]; // локальный буфер для передачи по UDP
+//	char hlBuf[128]; // буфер обработчика прерывания принятых сообщений по UDP
+//	strncpy(hlBuf, rxBuf, sizeof rxBuf);
+//
+//	udp_client_send(rxBuf);
+//
+//	if(hlBuf[0] == 'G') // Если поступили g-команды
+//	{
+//		strcpy(TaskBuffer[counter_gcommand], hlBuf);
+//		counter_gcommand ++;
+//	}
+//	if(hlBuf[0] == 'B') // Символ начала исполнения программы
+//	{
+//		if(counter_gcommand == 0) // Проверка на начилие пустового буфера пришедших команд
+//		{
+//			snprintf(txBuf, sizeof txBuf, "\nERROR!\nNumber of g-commands - 0\n");
+//			udp_client_send(txBuf);
+//		}
+//		else
+//		{
+//			flag_START = 1;
+//			snprintf(txBuf, sizeof txBuf, "\nThe process has started!\nNumber of g-commands - %d\n", counter_gcommand);
+//			udp_client_send(txBuf);
+//		}
+//	}
+//	if(hlBuf[0] == 'E')
+//	{
+//		HAL_TIM_Base_Stop_IT(&htim1);
+//		snprintf(txBuf, sizeof txBuf, "\nThe process is stopped!\n");
+//		udp_client_send(txBuf);
+//
+//		spi_pilot_switch();
+//
+//		memset(TaskBuffer[0], 0, 128);
+//		counter_gcommand = 0;
+//	}
+//}
 
 #endif /* INC_UDP_CLIENT_H_ */

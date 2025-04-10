@@ -23,6 +23,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "net.h"
+#include "planner.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -51,8 +52,7 @@ I2C_HandleTypeDef hi2c1;
 
 SPI_HandleTypeDef hspi3;
 
-TIM_HandleTypeDef htim1;
-TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim13;
 
 UART_HandleTypeDef huart1;
@@ -65,6 +65,9 @@ PCD_HandleTypeDef hpcd_USB_OTG_FS;
 /* Структура данных для использования с lwIP сетевым интерфейсом */
 extern struct netif gnetif;
 
+/* Буфер входящих по UDP данных из библиотеки net.h */
+extern char rxBuf[128];
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -74,19 +77,113 @@ static void MX_ADC1_Init(void);
 static void MX_CAN1_Init(void);
 static void MX_DAC_Init(void);
 static void MX_I2C1_Init(void);
-static void MX_TIM1_Init(void);
-static void MX_TIM3_Init(void);
 static void MX_TIM13_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_USB_OTG_FS_PCD_Init(void);
 static void MX_SPI3_Init(void);
 static void MX_USART3_UART_Init(void);
+static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
+
+/* Прототипы функций для работы с таймером TIM2, настроенным на 1 МГц -> 1 мкс */
+uint32_t getMicrosecondsTIM2(void);
+void startTimerTIM2(void);
+void stopTimerTIM2(void);
+void resetTimerTIM2(void);
+
+/** Функция обработки входящих сообщений по UDP
+ * 	описание в main.c необходимо для вызова функций другиз библиотек
+ */
+void udpReceiveHandler(void);
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+/* Создание указателя на функцию записи состояния пина микроконтроллера */
+static writePinFunction_void_ptr function_pin_1 = (writePinFunction_void_ptr)HAL_GPIO_WritePin;
+
+/* Создание указателя на функцию запсука таймера TIM2 */
+static timeFunction_void_ptr function_time_1 = (timeFunction_void_ptr)startTimerTIM2;
+
+/* Создание указателя на функцию остановки таймера TIM2 */
+static timeFunction_void_ptr function_time_2 = (timeFunction_void_ptr)stopTimerTIM2;
+
+/* Создание указателя на функцию чтения времени таймера TIM2 */
+static timeFunction_uint32_t_ptr function_time_3 = (timeFunction_uint32_t_ptr)getMicrosecondsTIM2;
+
+/* Создание указателя на функцию сброса счетчика таймера TIM2 */
+static timeFunction_void_ptr function_time_4 = (timeFunction_void_ptr)resetTimerTIM2;
+
+/* Структуры выводов STEP - DIR - EN для шаговых моторов */
+STEPPER_PINS_StructDef stepper1_pins = {(GPIO_StructDef_custom*)STEP1_GPIO_Port, STEP1_Pin, \
+										(GPIO_StructDef_custom*)DIR1_GPIO_Port, DIR1_Pin};
+
+STEPPER_PINS_StructDef stepper2_pins = {(GPIO_StructDef_custom*)STEP2_GPIO_Port, STEP2_Pin, \
+										(GPIO_StructDef_custom*)DIR2_GPIO_Port, DIR2_Pin};
+
+STEPPER_PINS_StructDef stepper3_pins = {(GPIO_StructDef_custom*)STEP3_GPIO_Port, STEP3_Pin, \
+										(GPIO_StructDef_custom*)DIR3_GPIO_Port, DIR3_Pin};
+
+STEPPER_PINS_StructDef stepper4_pins = {(GPIO_StructDef_custom*)STEP4_GPIO_Port, STEP4_Pin, \
+										(GPIO_StructDef_custom*)DIR4_GPIO_Port, DIR4_Pin};
+
+STEPPER_PINS_StructDef stepper5_pins = {(GPIO_StructDef_custom*)STEP5_GPIO_Port, STEP5_Pin, \
+										(GPIO_StructDef_custom*)DIR5_GPIO_Port, DIR5_Pin};
+
+STEPPER_PINS_StructDef stepper6_pins = {(GPIO_StructDef_custom*)STEP6_GPIO_Port, STEP6_Pin, \
+										(GPIO_StructDef_custom*)DIR6_GPIO_Port, DIR6_Pin};
+
+STEPPER_PINS_StructDef stepper7_pins = {(GPIO_StructDef_custom*)STEP7_GPIO_Port, STEP7_Pin, \
+										(GPIO_StructDef_custom*)DIR7_GPIO_Port, DIR7_Pin};
+
+STEPPER_PINS_StructDef stepper8_pins = {(GPIO_StructDef_custom*)STEP8_GPIO_Port, STEP8_Pin, \
+										(GPIO_StructDef_custom*)DIR8_GPIO_Port, DIR8_Pin};
+
+/* Структуры шаговых моторов */
+STEPPER_StructDef stepper1;
+STEPPER_StructDef stepper2;
+
+/* Структуры пинов концевых переключателей и датчика нуля драйверов шаговых моторов */
+DRIVER_LIMIT_SWITCH_PINS_StructDef driver1_pins = {(GPIO_StructDef_custom*)EXTI_1_LS1_N_GPIO_Port, EXTI_1_LS1_N_Pin, NORMALLY_OPEN, \
+												   (GPIO_StructDef_custom*)ZERO_POS1_GPIO_Port, ZERO_POS1_Pin, NORMALLY_OPEN, \
+												   (GPIO_StructDef_custom*)EXTI_0_LS1_P_GPIO_Port, EXTI_0_LS1_P_Pin, NORMALLY_OPEN};
+
+DRIVER_LIMIT_SWITCH_PINS_StructDef driver2_pins = {(GPIO_StructDef_custom*)EXTI_3_LS2_N_GPIO_Port, EXTI_3_LS2_N_Pin, NORMALLY_OPEN, \
+												   (GPIO_StructDef_custom*)ZERO_POS2_GPIO_Port, ZERO_POS2_Pin, NORMALLY_OPEN, \
+												   (GPIO_StructDef_custom*)EXTI_2_LS2_P_GPIO_Port, EXTI_2_LS2_P_Pin, NORMALLY_OPEN};
+
+DRIVER_LIMIT_SWITCH_PINS_StructDef driver3_pins = {(GPIO_StructDef_custom*)EXTI_5_LS3_N_GPIO_Port, EXTI_5_LS3_N_Pin, NORMALLY_OPEN, \
+												   (GPIO_StructDef_custom*)ZERO_POS3_GPIO_Port, ZERO_POS3_Pin, NORMALLY_OPEN, \
+												   (GPIO_StructDef_custom*)EXTI_4_LS3_P_GPIO_Port, EXTI_4_LS3_P_Pin, NORMALLY_OPEN};
+
+DRIVER_LIMIT_SWITCH_PINS_StructDef driver4_pins = {(GPIO_StructDef_custom*)EXTI_7_LS4_N_GPIO_Port, EXTI_7_LS4_N_Pin, NORMALLY_OPEN, \
+												   (GPIO_StructDef_custom*)ZERO_POS4_GPIO_Port, ZERO_POS4_Pin, NORMALLY_OPEN, \
+												   (GPIO_StructDef_custom*)EXTI_6_LS4_P_GPIO_Port, EXTI_6_LS4_P_Pin, NORMALLY_OPEN};
+
+DRIVER_LIMIT_SWITCH_PINS_StructDef driver5_pins = {(GPIO_StructDef_custom*)EXTI_9_LS5_N_GPIO_Port, EXTI_9_LS5_N_Pin, NORMALLY_OPEN, \
+												   (GPIO_StructDef_custom*)ZERO_POS5_GPIO_Port, ZERO_POS5_Pin, NORMALLY_OPEN, \
+												   (GPIO_StructDef_custom*)EXTI_8_LS5_P_GPIO_Port, EXTI_8_LS5_P_Pin, NORMALLY_OPEN};
+
+DRIVER_LIMIT_SWITCH_PINS_StructDef driver6_pins = {(GPIO_StructDef_custom*)EXTI_11_LS6_N_GPIO_Port, EXTI_11_LS6_N_Pin, NORMALLY_OPEN, \
+												   (GPIO_StructDef_custom*)ZERO_POS6_GPIO_Port, ZERO_POS6_Pin, NORMALLY_OPEN, \
+												   (GPIO_StructDef_custom*)EXTI_10_LS6_P_GPIO_Port, EXTI_10_LS6_P_Pin, NORMALLY_OPEN};
+
+DRIVER_LIMIT_SWITCH_PINS_StructDef driver7_pins = {(GPIO_StructDef_custom*)EXTI_13_LS7_N_GPIO_Port, EXTI_13_LS7_N_Pin, NORMALLY_OPEN, \
+												   (GPIO_StructDef_custom*)ZERO_POS7_GPIO_Port, ZERO_POS7_Pin, NORMALLY_OPEN, \
+												   (GPIO_StructDef_custom*)EXTI_12_LS7_P_GPIO_Port, EXTI_12_LS7_P_Pin, NORMALLY_OPEN};
+
+DRIVER_LIMIT_SWITCH_PINS_StructDef driver8_pins = {(GPIO_StructDef_custom*)EXTI_15_LS8_N_GPIO_Port, EXTI_15_LS8_N_Pin, NORMALLY_OPEN, \
+												   (GPIO_StructDef_custom*)ZERO_POS8_GPIO_Port, ZERO_POS8_Pin, NORMALLY_OPEN, \
+												   (GPIO_StructDef_custom*)EXTI_14_LS8_P_GPIO_Port, EXTI_14_LS8_P_Pin, NORMALLY_OPEN};
+
+/* Структуры драйверов шаговых моторов */
+DRIVER_StructDef driver1;
+DRIVER_StructDef driver2;
+
+/* Экземпляр структуры планировщика*/
+PLANNER_StructDef planner;
 
 /* USER CODE END 0 */
 
@@ -123,18 +220,51 @@ int main(void)
   MX_CAN1_Init();
   MX_DAC_Init();
   MX_I2C1_Init();
-  MX_TIM1_Init();
-  MX_TIM3_Init();
   MX_TIM13_Init();
   MX_USART1_UART_Init();
   MX_USB_OTG_FS_PCD_Init();
   MX_SPI3_Init();
   MX_USART3_UART_Init();
   MX_LWIP_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
+
+  /* Инициализация таймер DWT для одного шага в библиотеке stepper.h */
+  DWT_Init();
+
+  /* Инициализация указателей на функции HAL для работы библиотек stepper.h и driver.h */
+  stepperFunctionsInit(function_pin_1);
+  driverFunctionsInit(function_time_1, function_time_2, function_time_3, function_time_4);
+
+  /* Инициализация шаговых моторов */
+  stepperInit(&stepper1, &stepper1_pins);
+  stepperInit(&stepper2, &stepper2_pins);
+
+  /* Инициализация драйверов шаговых моторов */
+  driverInit(&driver1, &stepper1, &driver1_pins, 5000);
+  driverInit(&driver2, &stepper2, &driver2_pins, 5000);
+
+  /* Инициализация планировщика*/
+  plannerInit(&planner);
+
+  /* Добавить драйверы в планировщик */
+//  addDriver(&planner, &driver1, 0);
+//  addDriver(&planner, &driver2, 1);
 
   /* Инициализация UDP сокета */
   udpSocketInit();
+
+  /* Включение таймера TIM2 */
+  startTimerTIM2();
+
+  /* Задание максимальной скорости и ускорения шаговых моторов */
+  setAcceleration(&driver1, 1000);
+  setMaxSpeed(&driver1, 5000);
+
+  setAcceleration(&driver2, 1000);
+  setMaxSpeed(&driver2, 5000);
+
+  /* Тест */
 
   /* USER CODE END 2 */
 
@@ -142,6 +272,10 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  /* Основные функции управления драйверами */
+	  tickDriver(&driver1);
+	  tickDriver(&driver2);
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -406,140 +540,47 @@ static void MX_SPI3_Init(void)
 }
 
 /**
-  * @brief TIM1 Initialization Function
+  * @brief TIM2 Initialization Function
   * @param None
   * @retval None
   */
-static void MX_TIM1_Init(void)
+static void MX_TIM2_Init(void)
 {
 
-  /* USER CODE BEGIN TIM1_Init 0 */
+  /* USER CODE BEGIN TIM2_Init 0 */
 
-  /* USER CODE END TIM1_Init 0 */
+  /* USER CODE END TIM2_Init 0 */
 
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
-  TIM_OC_InitTypeDef sConfigOC = {0};
-  TIM_BreakDeadTimeConfigTypeDef sBreakDeadTimeConfig = {0};
 
-  /* USER CODE BEGIN TIM1_Init 1 */
+  /* USER CODE BEGIN TIM2_Init 1 */
 
-  /* USER CODE END TIM1_Init 1 */
-  htim1.Instance = TIM1;
-  htim1.Init.Prescaler = 0;
-  htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 65535;
-  htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim1.Init.RepetitionCounter = 0;
-  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_PWM_Init(&htim1) != HAL_OK)
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 83;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 4294967295;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
   {
     Error_Handler();
   }
   sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
   {
     Error_Handler();
   }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCNPolarity = TIM_OCNPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
-  sConfigOC.OCNIdleState = TIM_OCNIDLESTATE_RESET;
-  if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_4) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sBreakDeadTimeConfig.OffStateRunMode = TIM_OSSR_DISABLE;
-  sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_DISABLE;
-  sBreakDeadTimeConfig.LockLevel = TIM_LOCKLEVEL_OFF;
-  sBreakDeadTimeConfig.DeadTime = 0;
-  sBreakDeadTimeConfig.BreakState = TIM_BREAK_DISABLE;
-  sBreakDeadTimeConfig.BreakPolarity = TIM_BREAKPOLARITY_HIGH;
-  sBreakDeadTimeConfig.AutomaticOutput = TIM_AUTOMATICOUTPUT_DISABLE;
-  if (HAL_TIMEx_ConfigBreakDeadTime(&htim1, &sBreakDeadTimeConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM1_Init 2 */
+  /* USER CODE BEGIN TIM2_Init 2 */
 
-  /* USER CODE END TIM1_Init 2 */
-  HAL_TIM_MspPostInit(&htim1);
-
-}
-
-/**
-  * @brief TIM3 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_TIM3_Init(void)
-{
-
-  /* USER CODE BEGIN TIM3_Init 0 */
-
-  /* USER CODE END TIM3_Init 0 */
-
-  TIM_MasterConfigTypeDef sMasterConfig = {0};
-  TIM_OC_InitTypeDef sConfigOC = {0};
-
-  /* USER CODE BEGIN TIM3_Init 1 */
-
-  /* USER CODE END TIM3_Init 1 */
-  htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 0;
-  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim3.Init.Period = 65535;
-  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_4) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM3_Init 2 */
-
-  /* USER CODE END TIM3_Init 2 */
-  HAL_TIM_MspPostInit(&htim3);
+  /* USER CODE END TIM2_Init 2 */
 
 }
 
@@ -711,15 +752,16 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOD_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOE, ZERO_POS2_Pin|DIR1_Pin|DIR2_Pin|DIR3_Pin
-                          |DIR4_Pin|DIR5_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOE, ZERO_POS2_Pin|DIR1_Pin|DIR2_Pin|STEP1_Pin
+                          |DIR3_Pin|STEP2_Pin|DIR4_Pin|STEP3_Pin
+                          |STEP4_Pin|DIR5_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, ACK_LINE0_Pin|ACK_LINE1_Pin|ACK_LINE2_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, ACK_LINE0_Pin|ACK_LINE1_Pin|ACK_LINE2_Pin|STEP6_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, DIR6_Pin|DIR7_Pin|DIR8_Pin|SPI3_NSS1_Pin
-                          |SPI3_NSS0_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, STEP7_Pin|STEP8_Pin|DIR6_Pin|DIR7_Pin
+                          |DIR8_Pin|STEP5_Pin|SPI3_NSS1_Pin|SPI3_NSS0_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, LED_STATE_Pin|SPI3_NSS2_Pin, GPIO_PIN_RESET);
@@ -733,14 +775,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : ZERO_POS2_Pin DIR1_Pin DIR2_Pin DIR3_Pin
-                           DIR4_Pin DIR5_Pin */
-  GPIO_InitStruct.Pin = ZERO_POS2_Pin|DIR1_Pin|DIR2_Pin|DIR3_Pin
-                          |DIR4_Pin|DIR5_Pin;
+  /*Configure GPIO pin : ZERO_POS2_Pin */
+  GPIO_InitStruct.Pin = ZERO_POS2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
+  HAL_GPIO_Init(ZERO_POS2_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : EXTI_4_LS3_P_Pin EXTI_5_LS3_N_Pin EXTI_1_LS1_N_Pin */
   GPIO_InitStruct.Pin = EXTI_4_LS3_P_Pin|EXTI_5_LS3_N_Pin|EXTI_1_LS1_N_Pin;
@@ -763,14 +803,25 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : DIR6_Pin DIR7_Pin DIR8_Pin SPI3_NSS1_Pin
-                           SPI3_NSS0_Pin */
-  GPIO_InitStruct.Pin = DIR6_Pin|DIR7_Pin|DIR8_Pin|SPI3_NSS1_Pin
-                          |SPI3_NSS0_Pin;
+  /*Configure GPIO pins : STEP7_Pin STEP8_Pin DIR6_Pin DIR7_Pin
+                           DIR8_Pin STEP5_Pin */
+  GPIO_InitStruct.Pin = STEP7_Pin|STEP8_Pin|DIR6_Pin|DIR7_Pin
+                          |DIR8_Pin|STEP5_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : DIR1_Pin DIR2_Pin STEP1_Pin DIR3_Pin
+                           STEP2_Pin DIR4_Pin STEP3_Pin STEP4_Pin
+                           DIR5_Pin */
+  GPIO_InitStruct.Pin = DIR1_Pin|DIR2_Pin|STEP1_Pin|DIR3_Pin
+                          |STEP2_Pin|DIR4_Pin|STEP3_Pin|STEP4_Pin
+                          |DIR5_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  HAL_GPIO_Init(GPIOE, &GPIO_InitStruct);
 
   /*Configure GPIO pins : EXTI_10_LS6_P_Pin EXTI_11_LS6_N_Pin EXTI_12_LS7_P_Pin EXTI_13_LS7_N_Pin
                            EXTI_14_LS8_P_Pin EXTI_15_LS8_N_Pin EXTI_7_LS4_N_Pin */
@@ -779,6 +830,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : STEP6_Pin */
+  GPIO_InitStruct.Pin = STEP6_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  HAL_GPIO_Init(STEP6_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : LED_STATE_Pin SPI3_NSS2_Pin */
   GPIO_InitStruct.Pin = LED_STATE_Pin|SPI3_NSS2_Pin;
@@ -806,12 +864,98 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(ZERO_POS5_GPIO_Port, &GPIO_InitStruct);
 
+  /*Configure GPIO pins : SPI3_NSS1_Pin SPI3_NSS0_Pin */
+  GPIO_InitStruct.Pin = SPI3_NSS1_Pin|SPI3_NSS0_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
   /* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
+
+/** Запуск таймера для отсчета времени в микросекундах
+ * 	Используется таймер TIM2
+ */
+void startTimerTIM2(void)
+{
+	HAL_TIM_Base_Start_IT(&htim2);
+}
+
+/** Остановка таймера для отсчета времени в микросекундах
+ * 	Используется таймер TIM2
+ */
+void stopTimerTIM2(void)
+{
+	HAL_TIM_Base_Stop_IT(&htim2);
+}
+
+/** Функция сброса счетчика таймера в 0
+ * 	Используется таймер TIM2
+ */
+void resetTimerTIM2(void)
+{
+	TIM2->CNT = 0;
+}
+
+/** Функция возвращает время в микросекундах с момента включения устройства
+ * Используется таймер TIM2
+ * Частота работы таймера 1МГц
+ * 1 тик таймера = 1 мкс
+ */
+uint32_t getMicrosecondsTIM2(void)
+{
+	return TIM2->CNT;
+}
+
+/**
+ *
+ */
+void udpReceiveHandler(void)
+{
+	char data[256];
+
+	int target_pos = strtol(rxBuf, NULL, 10);
+	memset(rxBuf, 0, 128);
+
+	setTarget(&driver1, target_pos);
+	setTarget(&driver2, target_pos);
+
+	sprintf(data, "target = %d;\n", target_pos);
+	udpClientSend(data);
+}
+
+/** Функция проверки свзяи с пинами STEP - DIR
+ * 	К выводам подключены светодиоды!
+ */
+void testStepDirPin()
+{
+	/* Пины STEP */
+	HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_9);
+	HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_11);
+	HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_13);
+	HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_14);
+	HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_4);
+	HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_7);
+	HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_0);
+	HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_1);
+
+	/* Пины DIR */
+	HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_7);
+	HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_8);
+	HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_10);
+	HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_12);
+	HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_15);
+	HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_10);
+	HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_14);
+	HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_15);
+
+	HAL_Delay(500);
+}
 
 /* USER CODE END 4 */
 

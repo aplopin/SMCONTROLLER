@@ -10,7 +10,7 @@
 #include "dwt.h"
 
 /* Время переключения состояния пина STEP в мкс, по-умолчанию 4 мкс */
-#define DRIVER_STEP_TIME 10
+#define DRIVER_STEP_TIME 50
 
 /* Определение структуры порта DIO из стандартной библиотеки HAL STM32
  * для использования указателей GPIO_TypeDef *GPIOx
@@ -54,14 +54,14 @@ typedef struct
 	STEPPER_PINS_StructDef stepper_pins;
 
 	/* Текущая позиция мотора в шагах */
-	int32_t pos;
+	volatile int32_t pos;
 
 	/* Текущее направление вращения мотора (1 или -1)
 	 * 1 - по часовой стрелки
 	 * -1 - против часовой стрелки
 	 * Направление вращения определяется со стороны задней части мотора
 	 */
-	int8_t dir;
+	volatile int8_t dir;
 
 	/* Статус включения мотора */
 	statusEn_t en;
@@ -85,7 +85,7 @@ static writePinFunction_void_ptr setPin;
 void stepperFunctionsInit(writePinFunction_void_ptr function);
 void stepperInit(STEPPER_StructDef* stepper, STEPPER_PINS_StructDef* pins);
 void doStep(STEPPER_StructDef* stepper);
-void setDir(STEPPER_StructDef* stepper, uint8_t dir);
+void setDir(STEPPER_StructDef* stepper, int8_t dir);
 void enableStepper(STEPPER_StructDef* stepper);
 void disableStepper(STEPPER_StructDef* stepper);
 void invertPinEn(STEPPER_StructDef* stepper);
@@ -156,7 +156,7 @@ void doStep(STEPPER_StructDef* stepper)
  * 	Направление вращения определяется со стороны задней части мотора,
  * 	т.е. вал мотора смотрит от нас!
  */
-void setDir(STEPPER_StructDef* stepper, uint8_t dir)
+void setDir(STEPPER_StructDef* stepper, int8_t dir)
 {
 	if(stepper->_globDir == false)
 	{
