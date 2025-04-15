@@ -91,7 +91,7 @@ typedef struct
 	volatile uint32_t tickUs;
 
 	/* Переменная состояния драйвера */
-	workState_t _workState;
+	work_state_t _workState;
 
 	/* Переменная - флаг работы режима автоотключения драйвера после завершения движения */
 	bool _autoPower;
@@ -156,14 +156,14 @@ uint16_t getMinPeriod(DRIVER_StructDef* driver);
 
 /* ------------------------------------ Управляющие функции ------------------------------------ */
 
-workState_t tickDriver(DRIVER_StructDef* driver);
+work_state_t tickDriver(DRIVER_StructDef* driver);
 void enableDriver(DRIVER_StructDef* driver);
 void disableDriver(DRIVER_StructDef* driver);
 void stop(DRIVER_StructDef* driver);
 void brake(DRIVER_StructDef* driver);
 void reset(DRIVER_StructDef* driver);
 void step(DRIVER_StructDef* driver);
-workState_t getStatusDriver(DRIVER_StructDef* driver);
+work_state_t getStatusDriver(DRIVER_StructDef* driver);
 
 /* ------------------------------------ Управляющие функции ------------------------------------ */
 
@@ -237,7 +237,7 @@ void driverInit(DRIVER_StructDef* driver, STEPPER_StructDef* stepper, DRIVER_LIM
 	driver->_accelSpeed = 0;
 	driver->_target = 0;
 	driver->tickUs = 0;
-	driver->_workState = INIT;
+	driver->_workState = DRIVER_INIT;
 	driver->_autoPower = false;
 	driver->_stopSpeed = 0;
 	driver->_maxSpeed = 300;
@@ -326,9 +326,9 @@ uint16_t getMinPeriod(DRIVER_StructDef* driver)
  * 	имеется встроенный таймер на тиках микропроцессора
  * 	Возвращает BUSY, если мотор запущен в режиме POSITION_MODE или VELOCITY_MODE
  */
-workState_t tickDriver(DRIVER_StructDef* driver)
+work_state_t tickDriver(DRIVER_StructDef* driver)
 {
-	if (driver->_workState == BUSY)
+	if (driver->_workState == DRIVER_BUSY)
 	{
 		driver->tickUs = getMicros();
 
@@ -354,7 +354,7 @@ workState_t tickDriver(DRIVER_StructDef* driver)
 			if (driver->_curMode == POSITION_MODE && driver->_target == driver->stepper->pos)
             {
 				brake(driver);
-				return BRAKE;
+				return DRIVER_READY;
             }
 
 			step(driver);  // двигаем мотор
@@ -368,7 +368,7 @@ workState_t tickDriver(DRIVER_StructDef* driver)
  */
 void enableDriver(DRIVER_StructDef* driver)
 {
-	driver->_workState = BUSY;
+	driver->_workState = DRIVER_READY;
 	driver->_stopSpeed = 0;
 
 	resetTimers(driver);
@@ -380,6 +380,7 @@ void enableDriver(DRIVER_StructDef* driver)
  */
 void disableDriver(DRIVER_StructDef* driver)
 {
+	driver->_workState = DRIVER_BRAKE;
 	disableStepper(driver->stepper);
 }
 
@@ -387,7 +388,7 @@ void disableDriver(DRIVER_StructDef* driver)
  */
 void stop(DRIVER_StructDef* driver)
 {
-	if (driver->_workState == BUSY)
+	if (driver->_workState == DRIVER_BUSY)
 	{
 		resetTimers(driver);
 
@@ -420,7 +421,7 @@ void stop(DRIVER_StructDef* driver)
  */
 void brake(DRIVER_StructDef* driver)
 {
-	driver->_workState = RESET;
+	driver->_workState = DRIVER_READY;
 	driver->_stopSpeed = 0;
 
 	resetMotor(driver);
@@ -450,7 +451,7 @@ void step(DRIVER_StructDef* driver)
  * 	BRAKE - был сброшен
  * 	ERR - в ошибке
  */
-workState_t getStatusDriver(DRIVER_StructDef* driver)
+work_state_t getStatusDriver(DRIVER_StructDef* driver)
 {
 	return driver->_workState;
 }
@@ -504,7 +505,7 @@ void setTarget(DRIVER_StructDef* driver, int32_t target_pos)
 			driver->stepper->dir = (driver->_target > driver->stepper->pos) ? 1 : -1;
 		}
 
-		enableDriver(driver);
+		driver->_workState = DRIVER_BUSY;
 	}
 }
 
@@ -536,6 +537,7 @@ void setMaxSpeed(DRIVER_StructDef* driver, float speed)
 {
 	/* Ограничения минимальной скорости - 1 шаг/час */
 	driver->_maxSpeed = fmax(fabs(speed), MIN_STEP_SPEED);
+	driver->_maxSpeed = speed;
 
 	/* Cчитаем stepTime для низких скоростей или отключенного ускорения */
 	if (driver->_accel == 0 || driver->_maxSpeed < MIN_SPEED_POS_MODE) driver->stepTime = 1000000.0 / driver->_maxSpeed;

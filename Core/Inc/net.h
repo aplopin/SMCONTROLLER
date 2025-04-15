@@ -7,6 +7,8 @@
 #include "lwip/pbuf.h"
 #include "lwip/udp.h"
 
+#include "fifo.h"
+
 /* Структура UDP протокола */
 struct udp_pcb *upcb;
 
@@ -15,6 +17,9 @@ char rxBuf[128] = {0};
 
 /* Счетчик принятых сообщений */
 int counter = 0;
+
+/* Fifo буфер сетевого интерфейса UDP */
+FIFO_StructDef netBuf;
 
 /* --------------------------------------- Прототипы функций библиотеки net.h --------------------------------------- */
 
@@ -52,6 +57,9 @@ void udpSocketInit(void)
 		/* Передача указателя на функцию обработчика входящих пакетов в структуру UDP интерфейса */
 		udp_recv(upcb, udpReceiveCallback, NULL);
 	}
+
+	/* Инициализация буфера сетевого интерфейса с размеров 5*(sizeof(int16_t)) = 10 байт*/
+	fifoInit(5, &netBuf);
 }
 
 /** Функция обработки принятых пакетов UDP
@@ -61,11 +69,6 @@ void udpReceiveCallback(void *arg, struct udp_pcb *upcb, struct pbuf *p, const i
 	strncpy(rxBuf, (char *)p->payload, p->len);
 	counter ++;
 	pbuf_free(p);
-
-	char data[256];
-	sprintf(data, "STM32: number of message received = %d\n", counter);
-
-	udpClientSend(data);
 
 	/* Вызов обработчик принятных сообщений */
 	udpReceiveHandler();

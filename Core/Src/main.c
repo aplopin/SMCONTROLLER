@@ -24,7 +24,6 @@
 /* USER CODE BEGIN Includes */
 #include "net.h"
 #include "planner.h"
-#include "fifo.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -68,6 +67,9 @@ extern struct netif gnetif;
 
 /* Буфер входящих по UDP данных из библиотеки net.h */
 extern char rxBuf[128];
+
+/* Fifo буфер сетевого интерфейса UDP */
+extern FIFO_StructDef netBuf;
 
 /* USER CODE END PV */
 
@@ -186,6 +188,9 @@ DRIVER_StructDef driver2;
 /* Экземпляр структуры планировщика*/
 PLANNER_StructDef planner;
 
+/* Тестовая переменная для целевой позиции */
+int32_t target;
+
 /* USER CODE END 0 */
 
 /**
@@ -239,11 +244,9 @@ int main(void)
 
   /* Инициализация шаговых моторов */
   stepperInit(&stepper1, &stepper1_pins);
-  stepperInit(&stepper2, &stepper2_pins);
 
   /* Инициализация драйверов шаговых моторов */
-  driverInit(&driver1, &stepper1, &driver1_pins, 5000);
-  driverInit(&driver2, &stepper2, &driver2_pins, 5000);
+  driverInit(&driver1, &stepper1, &driver1_pins, 3200);
 
   /* Инициализация планировщика*/
   plannerInit(&planner);
@@ -259,11 +262,10 @@ int main(void)
   startTimerTIM2();
 
   /* Задание максимальной скорости и ускорения шаговых моторов */
-  setAcceleration(&driver1, 1000);
+  setAcceleration(&driver1, 500);
   setMaxSpeed(&driver1, 5000);
 
-  setAcceleration(&driver2, 1000);
-  setMaxSpeed(&driver2, 5000);
+  enableDriver(&driver1);
 
   /* Тест */
 
@@ -273,9 +275,16 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  if(getStatusDriver(&driver1) == DRIVER_READY)
+	  {
+		  if(fifoRead(&netBuf, &target) == FIFO_OK )
+		  {
+			  setTarget(&driver1, target);
+		  }
+	  }
+
 	  /* Основные функции управления драйверами */
 	  tickDriver(&driver1);
-	  tickDriver(&driver2);
 
     /* USER CODE END WHILE */
 
@@ -918,19 +927,55 @@ uint32_t getMicrosecondsTIM2(void)
  */
 void udpReceiveHandler(void)
 {
-	char data[256];
+	if(rxBuf[0] == 'S')
+	{
+		uint16_t speed = strtol(&rxBuf[1], NULL, 10);
+		setMaxSpeed(&driver1, speed);
+
+		char data[256];
+		sprintf(data, "STM32: Max speed = %d; Counter received message = %d;\n", speed, counter);
+		udpClientSend(data);
+
+		memset(rxBuf, 0, 128);
+		return;
+	}
+
+	if(rxBuf[0] == 'A')
+	{
+		uint16_t acceleration = strtol(&rxBuf[1], NULL, 10);
+		setAcceleration(&driver1, acceleration);
+
+		char data[256];
+		sprintf(data, "STM32: Acceleration = %d; Counter received message = %d;\n", acceleration, counter);
+		udpClientSend(data);
+
+		memset(rxBuf, 0, 128);
+		return;
+	}
 
 	int target_pos = strtol(rxBuf, NULL, 10);
 	memset(rxBuf, 0, 128);
 
-	setTarget(&driver1, target_pos);
-	setTarget(&driver2, target_pos);
-
-	sprintf(data, "target = %d;\n", target_pos);
-	udpClientSend(data);
+	if(fifoWrite(&netBuf, target_pos) == FIFO_OVERFLOW)
+	{
+		char data[256];
+		sprintf(data, "STM32: Fifo-buffer is overflow! Counter received message = %d;\n", counter);
+		udpClientSend(data);
+		return;
+	}
+//	char data[256];
+//
+//	int target_pos = strtol(rxBuf, NULL, 10);
+//	memset(rxBuf, 0, 128);
+//
+//	setTarget(&driver1, target_pos);
+//	setTarget(&driver2, target_pos);
+//
+//	sprintf(data, "target = %d;\n", target_pos);
+//	udpClientSend(data);
 }
 
-/** Функция проверки свзяи с пинами STEP - DIR
+/** Функция проверки связи с пинами STEP - DIR
  * 	К выводам подключены светодиоды!
  */
 void testStepDirPin()

@@ -7,10 +7,10 @@
 #include <stdbool.h>
 
 #include "types.h"
-#include "dwt.h"
+#include "dwt.h"	/* Библиотека таймера DWT для задержки между фронтами сигнала для пина STEP */
 
 /* Время переключения состояния пина STEP в мкс, по-умолчанию 4 мкс */
-#define DRIVER_STEP_TIME 50
+#define DRIVER_STEP_TIME 5
 
 /* Определение структуры порта DIO из стандартной библиотеки HAL STM32
  * для использования указателей GPIO_TypeDef *GPIOx

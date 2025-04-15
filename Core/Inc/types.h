@@ -6,7 +6,7 @@ typedef enum
 	LINEAR,
 	ROTATIONAL
 
-} movement_t;
+} movemen_type_t;
 
 /* Тип данных - состояние работы драйвера
  * INIT - драйвер инициализирован
@@ -17,13 +17,13 @@ typedef enum
  */
 typedef enum
 {
-	INIT,
-	READY,
-	BUSY,
-	BRAKE,
-	ERR
+	DRIVER_INIT = 0,
+	DRIVER_READY,
+	DRIVER_BUSY,
+	DRIVER_BRAKE,
+	DRIVER_ERR
 
-} workState_t;
+} work_state_t;
 
 typedef enum
 {
