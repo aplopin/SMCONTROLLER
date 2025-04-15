@@ -24,6 +24,7 @@
 /* USER CODE BEGIN Includes */
 #include "net.h"
 #include "planner.h"
+#include "fifo.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/

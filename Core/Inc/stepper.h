@@ -1,5 +1,5 @@
-#ifndef STEPPER_H
-#define STEPPER_H
+#ifndef INC_STEPPER_H
+#define INC_STEPPER_H
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -241,4 +241,4 @@ void invertPinDir(STEPPER_StructDef* stepper)
 	stepper->_globDir = !stepper->_globDir;
 }
 
-#endif // STEPPER_H
+#endif // INC_STEPPER_H
