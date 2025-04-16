@@ -244,9 +244,11 @@ int main(void)
 
   /* Инициализация шаговых моторов */
   stepperInit(&stepper1, &stepper1_pins);
+  stepperInit(&stepper2, &stepper2_pins);
 
   /* Инициализация драйверов шаговых моторов */
-  driverInit(&driver1, &stepper1, &driver1_pins, 3200);
+  driverInit(&driver1, &stepper1, &driver1_pins, 1600);
+  driverInit(&driver2, &stepper2, &driver2_pins, 1600);
 
   /* Инициализация планировщика*/
   plannerInit(&planner);
@@ -261,11 +263,11 @@ int main(void)
   /* Включение таймера TIM2 */
   startTimerTIM2();
 
-  /* Задание максимальной скорости и ускорения шаговых моторов */
-  setAcceleration(&driver1, 500);
-  setMaxSpeed(&driver1, 5000);
-
+  /* Включить драйверы моторов */
   enableDriver(&driver1);
+  enableDriver(&driver2);
+
+  setRunMode(&driver1, VELOCITY_MODE);
 
   /* Тест */
 
@@ -927,13 +929,36 @@ uint32_t getMicrosecondsTIM2(void)
  */
 void udpReceiveHandler(void)
 {
-	if(rxBuf[0] == 'S')
+	if(rxBuf[0] == 'T' && rxBuf[1] == 'S')
 	{
-		uint16_t speed = strtol(&rxBuf[1], NULL, 10);
+		int16_t speed = strtol(&rxBuf[2], NULL, 10);
+		setSpeed(&driver1, speed);
+
+		char data[256];
+		sprintf(data, "STM32: Target velocity = %d; Counter received message = %d;\n", speed, counter);
+		udpClientSend(data);
+
+		memset(rxBuf, 0, 128);
+		return;
+	}
+
+	if(rxBuf[0] == 'M' && rxBuf[1] == 'S')
+	{
+		uint16_t speed = strtol(&rxBuf[2], NULL, 10);
 		setMaxSpeed(&driver1, speed);
 
 		char data[256];
 		sprintf(data, "STM32: Max speed = %d; Counter received message = %d;\n", speed, counter);
+		udpClientSend(data);
+
+		memset(rxBuf, 0, 128);
+		return;
+	}
+
+	if(rxBuf[0] == 'G' && rxBuf[1] == 'P')
+	{
+		char data[256];
+		sprintf(data, "STM32: Current position = %ld; Counter received message = %d;\n", getCurrent(&driver1), counter);
 		udpClientSend(data);
 
 		memset(rxBuf, 0, 128);

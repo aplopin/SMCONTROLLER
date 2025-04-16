@@ -21,9 +21,17 @@ typedef enum
 	DRIVER_READY,
 	DRIVER_BUSY,
 	DRIVER_BRAKE,
-	DRIVER_ERR
+	DRIVER_ERR,
+	DRIVER_OK
 
-} work_state_t;
+} driver_state_t;
+
+typedef enum
+{
+	PARAM_CHANGE_ERR = 0,
+	PARAM_CHANGE_OK
+
+} param_change_t;
 
 typedef enum
 {
