@@ -6,7 +6,7 @@ typedef enum
 	LINEAR,
 	ROTATIONAL
 
-} movemen_type_t;
+} movement_type_t;
 
 /* Тип данных - состояние работы драйвера
  * INIT - драйвер инициализирован

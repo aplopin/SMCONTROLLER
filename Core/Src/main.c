@@ -247,8 +247,8 @@ int main(void)
   stepperInit(&stepper2, &stepper2_pins);
 
   /* Инициализация драйверов шаговых моторов */
-  driverInit(&driver1, &stepper1, &driver1_pins, 1600);
-  driverInit(&driver2, &stepper2, &driver2_pins, 1600);
+  driverInit(&driver1, &stepper1, &driver1_pins, 1600, ROTATIONAL);
+  driverInit(&driver2, &stepper2, &driver2_pins, 1600, ROTATIONAL);
 
   /* Инициализация планировщика*/
   plannerInit(&planner);
@@ -932,7 +932,7 @@ void udpReceiveHandler(void)
 	if(rxBuf[0] == 'T' && rxBuf[1] == 'S')
 	{
 		int16_t speed = strtol(&rxBuf[2], NULL, 10);
-		setSpeed(&driver1, speed);
+		setSpeedDeg(&driver1, speed);
 
 		char data[256];
 		sprintf(data, "STM32: Target velocity = %d; Counter received message = %d;\n", speed, counter);
@@ -968,7 +968,7 @@ void udpReceiveHandler(void)
 	if(rxBuf[0] == 'A')
 	{
 		uint16_t acceleration = strtol(&rxBuf[1], NULL, 10);
-		setAcceleration(&driver1, acceleration);
+		setAccelerationDeg(&driver1, acceleration);
 
 		char data[256];
 		sprintf(data, "STM32: Acceleration = %d; Counter received message = %d;\n", acceleration, counter);

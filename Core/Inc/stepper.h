@@ -9,8 +9,8 @@
 #include "types.h"
 #include "dwt.h"	/* Библиотека таймера DWT для задержки между фронтами сигнала для пина STEP */
 
-/* Время переключения состояния пина STEP в мкс, по-умолчанию 4 мкс */
-#define DRIVER_STEP_TIME 5
+/* Время переключения состояния пина STEP в мкс, по-умолчанию 5 мкс */
+#define STEP_TIME 5
 
 /* Определение структуры порта DIO из стандартной библиотеки HAL STM32
  * для использования указателей GPIO_TypeDef *GPIOx
@@ -116,13 +116,6 @@ void stepperInit(STEPPER_StructDef* stepper, STEPPER_PINS_StructDef* pins)
 	stepper->stepper_pins.GPIOx_dir = pins->GPIOx_dir;
 	stepper->stepper_pins.GPIO_Pin_dir = pins->GPIO_Pin_dir;
 
-	/* ------------------ НЕ ИСПОЛЬЗУЕТСЯ ----------------- */
-
-//	stepper->pins.GPIOx_en = pins->GPIOx_en;
-//	stepper->pins.GPIO_Pin_en = pins->GPIO_Pin_en;
-
-	/* ------------------ НЕ ИСПОЛЬЗУЕТСЯ ----------------- */
-
 	stepper->stepper_pins.GPIOx_en = 0x0;
 	stepper->stepper_pins.GPIO_Pin_en = 0x0;
 
@@ -142,7 +135,7 @@ void doStep(STEPPER_StructDef* stepper)
 	setDir(stepper, stepper->dir); /* Установить пин DIR в нужное состояние в соответствии с направлением вращения */
 
 	setPin(stepper->stepper_pins.GPIOx_step, stepper->stepper_pins.GPIO_Pin_step, PIN_SET);
-	DWT_usDelay(DRIVER_STEP_TIME);
+	DWT_usDelay(STEP_TIME);
 	setPin(stepper->stepper_pins.GPIOx_step, stepper->stepper_pins.GPIO_Pin_step, PIN_RESET);
 }
 
@@ -183,8 +176,6 @@ void setDir(STEPPER_StructDef* stepper, int8_t dir)
 		}
 }
 
-/* ------------------ НЕ ИСПОЛЬЗУЕТСЯ ----------------- */
-
 /** Включение мотора
  */
 void enableStepper(STEPPER_StructDef* stepper)
@@ -222,8 +213,6 @@ void invertPinEn(STEPPER_StructDef* stepper)
 {
 	stepper->_globEn = !stepper->_globEn;
 }
-
-/* ------------------ НЕ ИСПОЛЬЗУЕТСЯ ----------------- */
 
 /** Инвертировать поведение пина DIR
  * 	_globDir определяет поведение пина DIR
