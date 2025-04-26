@@ -267,7 +267,7 @@ int main(void)
   enableDriver(&driver1);
   enableDriver(&driver2);
 
-  setRunMode(&driver1, VELOCITY_MODE);
+  setMoveMode(&driver1, POSITION_MODE);
 
   /* Тест */
 
@@ -277,13 +277,13 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  if(getStatusDriver(&driver1) == DRIVER_READY)
-	  {
-		  if(fifoRead(&netBuf, &target) == FIFO_OK )
-		  {
-			  setTarget(&driver1, target);
-		  }
-	  }
+//	  if(getStatusDriver(&driver1) == DRIVER_READY)
+//	  {
+//		  if(fifoRead(&netBuf, &target) == FIFO_OK )
+//		  {
+//			  setTargetDeg(&driver1, target);
+//		  }
+//	  }
 
 	  /* Основные функции управления драйверами */
 	  tickDriver(&driver1);
@@ -945,7 +945,7 @@ void udpReceiveHandler(void)
 	if(rxBuf[0] == 'M' && rxBuf[1] == 'S')
 	{
 		uint16_t speed = strtol(&rxBuf[2], NULL, 10);
-		setMaxSpeed(&driver1, speed);
+		setMaxSpeedDeg(&driver1, speed);
 
 		char data[256];
 		sprintf(data, "STM32: Max speed = %d; Counter received message = %d;\n", speed, counter);
@@ -958,7 +958,7 @@ void udpReceiveHandler(void)
 	if(rxBuf[0] == 'G' && rxBuf[1] == 'P')
 	{
 		char data[256];
-		sprintf(data, "STM32: Current position = %ld; Counter received message = %d;\n", getCurrent(&driver1), counter);
+		sprintf(data, "STM32: Current position = %ld; Counter received message = %d;\n", (long int)getCurrentPosDeg(&driver1), counter);
 		udpClientSend(data);
 
 		memset(rxBuf, 0, 128);
@@ -972,6 +972,19 @@ void udpReceiveHandler(void)
 
 		char data[256];
 		sprintf(data, "STM32: Acceleration = %d; Counter received message = %d;\n", acceleration, counter);
+		udpClientSend(data);
+
+		memset(rxBuf, 0, 128);
+		return;
+	}
+
+	if(rxBuf[0] == 'T' && rxBuf[1] == 'P')
+	{
+		int16_t target_pos = strtol(&rxBuf[2], NULL, 10);
+		setTargetPosDeg(&driver1, target_pos);
+
+		char data[512];
+		sprintf(data, "%d - STM32: Target position (steps) = %ld; s1 = %ld; s2 = %ld; s3 = %ld; N = %ld;\n", counter, (int32_t)(target_pos * driver1._stepsPerDeg), driver1._s1, driver1._s2, driver1._s3, driver1.N);
 		udpClientSend(data);
 
 		memset(rxBuf, 0, 128);
