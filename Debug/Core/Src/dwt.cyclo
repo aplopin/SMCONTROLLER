@@ -1,0 +1,3 @@
+../Core/Src/dwt.c:21:6:DWT_Init	1
+../Core/Src/dwt.c:34:8:DWT_GetDuration	1
+../Core/Src/dwt.c:50:6:DWT_usDelay	2

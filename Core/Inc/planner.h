@@ -8,9 +8,37 @@
 #include <math.h>
 
 #include "driver.h"
+#include "interpolator.h"
 
-#define GP_MIN_US 300000  // период, длиннее которого мотор можно резко тормозить или менять скорость
-#define AXES 3 // число осей интерполятора
+#define GP_MIN_US 300000  			//< период, длиннее которого мотор можно резко тормозить или менять скорость
+#define AXES 2 						//< число осей интерполятора
+
+/* Тип данных - состояние работы драйвера
+ * ERR - драйвер в ошибке
+ * INIT - драйвер инициализирован
+ * READY - драйвер готов к работе, мотор не двигается
+ * RUN - драйвер в работе, мотор двигается
+ * BRAKE - драйвера был остановлен
+ */
+typedef enum
+{
+	PLANNER_ERR = -1,
+	PLANNER_OK = 0,
+	PLANNER_INIT,
+	PLANNER_READY,
+	PLANNER_RUN,
+	PLANNER_BRAKE
+
+} planner_state_t;
+
+typedef enum
+{
+	BRAKING = -1,
+	UNIFORM = 0,
+	ACCELERATION = 1,
+	STAND = 2
+
+} planner_phase_t;
 
 /* Структура планировщика */
 typedef struct
@@ -21,6 +49,73 @@ typedef struct
 	 * планировщика
 	 */
 	DRIVER_StructDef* driver[AXES];
+
+	/* Отсчет времени в планировщике скорости */
+	uint32_t _PlannerTime;
+
+	/* ------------ Переменные интерполятора ------------- */
+
+	/* Текущая скорость интерполятора */
+	float _curSpeed;
+
+	/* Максимальная скорость интерполятора */
+	float _maxSpeed;
+
+	/* Ускорение интерполятора */
+	float _accel;
+
+	/* Стоп - флаг */
+	bool _stopFlag;
+
+	/* Фаза движения */
+	planner_phase_t _phase;
+
+	/* Переменная состояния драйвера */
+	planner_state_t _workState;
+
+	/* Текущее время драйвера с момента начала движения */
+	uint32_t tickUs;
+
+	/* Время предыдущего вхождения в главную функцию драйвера мотора tickPlanner */
+	uint32_t _prevTime;
+
+	/* Время между шагами при постоянной скорости мотора */
+	uint32_t stepTime;
+
+	/* ------ Переменные алгоритма плавного разгона ------ */
+
+	/* Начальное время планировщика скорости (мкс) */
+	float _c0;
+
+	/* n-тое время планировщика (мкс) */
+	float _cn;
+
+	/* Счетчик шагов планировщика скорости */
+	int32_t _n;
+
+	/* Количество шагов до целевой скорости */
+	uint32_t N;
+
+	/* Минимальное время планировщика скорости, вычисляется из максимальной скорости */
+	float _cmin;
+
+	/* Количетсво шагов разгона */
+	uint32_t _s1;
+
+	/* Флаг шагов равномерного движения
+	 * -1 - нужно сделать много шагов
+	 * 0 - нужно сделать 0 шагов
+	 * 1 - нужно сделать один шаг
+	 */
+	int8_t _s2;
+
+	/* Количество шагов торможения */
+	uint32_t _s3;
+
+	/* Счетчик шагов планировщика скорости в режиме POSITION_MODE */
+	uint32_t _k;
+
+
 
 	/* Период шагов */
 	uint32_t us;
@@ -58,161 +153,28 @@ typedef struct
 	/* Флаг изменения настроек */
 	bool changeSett;
 
+	/* --- Переменные алгоритма линейной интерполяции ---- */
+
+
 } PLANNER_StructDef;
 
-/** Инициализация планироващика
- *
- */
-void plannerInit(PLANNER_StructDef* planner)
-{
-	planner->status = 0;
-	planner->speedAxis = 0;
-	planner->shift = 0;
-	planner->readyF = true;
-	planner->changeSett = 0;
-}
+/* --------------------------------------- Инициализация --------------------------------------- */
 
-/** Подключить драйвер мотора driver на ось axis к планировщику
- *
- */
-void addDriver(PLANNER_StructDef* planner, DRIVER_StructDef* driver, uint8_t axis)
-{
-	planner->driver[axis] = driver;
-}
+void plannerInit(PLANNER_StructDef* planner);
+void plannerFunctionsInit(timeFunction_uint32_t_ptr function1);
+void addDriver(PLANNER_StructDef* planner, DRIVER_StructDef* driver, uint8_t axis);
 
-/** Включить моторы
- *
- */
-void enable(PLANNER_StructDef* planner)
-{
-	for(uint8_t i = 0; i < AXES; i ++)
-	{
-		enableDriver(planner->driver[i]);
-	}
-}
+/* ------------------------------------ Управляющие функции ------------------------------------ */
 
-/** Выключить моторы
- *
- */
-void disable(PLANNER_StructDef* planner)
-{
-	for(uint8_t i = 0; i < AXES; i ++)
-	{
-		disableDriver(planner->driver[i]);
-	}
-}
+void tickPlanner(PLANNER_StructDef* planner);
+void plannerTickTest(PLANNER_StructDef* planner);
+void plannerSteps(PLANNER_StructDef* planner);
+void plannerVelocity(PLANNER_StructDef* planner);
 
-/** Переключить питание
- *
- */
-void power(bool v)
-{
+param_change_t setAccelerationPlanner(PLANNER_StructDef* planner, float accel);
 
-}
+void brakePlanner(PLANNER_StructDef* planner);
+void startPlanner(PLANNER_StructDef* planner);
 
-// НАСТРОЙКИ
-
-/** Установка максимальной скорости планировщика в шаг/сек
- *
- */
-void setMaxSpeedPlanner(float nV);
-
-/** Установка ускорения планировщика в шаг/сек^2
- *
- */
-void setAccelerationPlanner(uint16_t nA);
-
-// ПЛАНИРОВЩИК
-/** Возвращает время в мкс до следующего вызова tick/tickManual
- *
- */
-uint32_t getPeriod();
-
-/** True - готов принять следующую точку маршрута
- *
- */
-bool ready();
-
-/** Пауза (доехать до заданной точки и ждать). ready() не вернёт true, пока ты на паузе
- *
- */
-void pause();
-
-/** Остановить плавно (с заданным ускорением)
- *
- */
-void stop();
-
-/** Резко остановить моторы из любого режима
- *
- */
-void brake();
-
-/** Продолжить после остановки/паузы
- *
- */
-void resume();
-
-/** Сбросить счётчики всех моторов в 0
- *
- */
-void reset();
-
-/** Отправить в 0 по всем осям
- *
- */
-void home();
-
-/** Текущий статус: 0 - стоим, 1 - едем, 2 - едем к точке паузы, 3 -крутимся со скоростью, 4 - тормозим
- *
- */
-uint8_t getStatusPlanner();
-
-// СКОРОСТЬ
-/** Режим постоянного вращения для оси axis со скоростью speed шаг/сек (м.б. отрицателеьной)
- *
- */
-void setSpeedPlanner(uint8_t axis, float speed);   //
-
-// ПОЗИЦИЯ
-/** Установить текущее положение моторов
- *
- */
-void setCurrentAxes(PLANNER_StructDef* planner, int32_t cur[])
-{
-	for(uint8_t i = 0; i < AXES; i ++)
-	{
-		planner->driver[i]->stepper->pos = cur[i];
-	}
-}
-
-/** Получить текущую позицию по оси axis
- *
- */
-int32_t getCurrentAxis(PLANNER_StructDef* planner, uint8_t axis)
-{
-	return planner->driver[axis]->stepper->pos;
-}
-
-/** Установить цель в шагах и начать движение
- *
- */
-bool setTargetAxis(int32_t target[]);
-
-/** Получить цель в шагах на оси axis
- *
- */
-int32_t getTargetAxis(int axis);
-
-// ТИКЕР
-// тикер, вызывать как можно чаще. Вернёт true, если мотор крутится
-// здесь делаются шаги как для движения по точкам, так и для вращения по скорости
-bool tickPlanner();
-
-// ручной тикер для вызова в прерывании или где то ещё. Выполняется 20..50 us
-bool tickManual();
-
-// ОСОБЕННОСТИ
-//- Планировщик не поддерживает горячую смену цели с плавным изменением скорости
 
 #endif /* INC_PLANNER_H_ */

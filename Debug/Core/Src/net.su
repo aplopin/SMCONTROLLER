@@ -1,0 +1,3 @@
+../Core/Src/net.c:32:6:udpSocketInit	24	static
+../Core/Src/net.c:64:6:udpReceiveCallback	24	static
+../Core/Src/net.c:76:6:udpClientSend	280	static

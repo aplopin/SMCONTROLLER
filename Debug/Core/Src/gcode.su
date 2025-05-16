@@ -1,0 +1,4 @@
+../Core/Src/gcode.c:589:6:handlerGcodeInit	16	static
+../Core/Src/gcode.c:608:6:handlerGcode	144	static
+../Core/Src/gcode.c:691:6:handlerGcommand	24	static
+../Core/Src/gcode.c:746:6:handlerStateCalculate	16	static

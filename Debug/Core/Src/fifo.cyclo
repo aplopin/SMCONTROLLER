@@ -1,0 +1,8 @@
+../Core/Src/fifo.c:18:14:fifoInit	2
+../Core/Src/fifo.c:30:14:fifoClear	2
+../Core/Src/fifo.c:45:10:cellsForRead	2
+../Core/Src/fifo.c:53:14:availableForRead	2
+../Core/Src/fifo.c:61:10:cellsForWrite	1
+../Core/Src/fifo.c:68:14:availableForWrite	2
+../Core/Src/fifo.c:76:14:fifoWrite	2
+../Core/Src/fifo.c:90:14:fifoRead	3

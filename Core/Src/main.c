@@ -22,8 +22,13 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdbool.h>
+
+#include "fifo.h"
+#include "fifo_char.h"
 #include "net.h"
 #include "planner.h"
+#include "gcode.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -52,6 +57,7 @@ I2C_HandleTypeDef hi2c1;
 
 SPI_HandleTypeDef hspi3;
 
+TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim13;
 
@@ -62,14 +68,23 @@ PCD_HandleTypeDef hpcd_USB_OTG_FS;
 
 /* USER CODE BEGIN PV */
 
-/* Структура данных для использования с lwIP сетевым интерфейсом */
+/* Импортированная структура данных для использования сетевого интерфейса UDP из библиотеки lwip.c */
 extern struct netif gnetif;
 
-/* Буфер входящих по UDP данных из библиотеки net.h */
+/* Импортированный счетчик принятых сообщений по UDP интерфейсу */
+extern int32_t counter;
+
+/* Импортированный буфер входящих по UDP данных из библиотеки net.h */
 extern char rxBuf[128];
 
-/* Fifo буфер сетевого интерфейса UDP */
-extern FIFO_StructDef netBuf;
+/* Импортированный FIFO буфер сетевого интерфейса UDP из библиотеки het.h */
+extern FIFO_StructDef fifoNetBuf;
+
+/* Импортированный FIFO буфер G - команд из библиотеки gcode.h */
+extern FIFO_CHAR_StructDef fifoGcodeBuf;
+
+/* Импортированный FIFO буфер шагов интерполятора */
+extern FIFO_StructDef fifoBufSteps;
 
 /* USER CODE END PV */
 
@@ -86,6 +101,7 @@ static void MX_USB_OTG_FS_PCD_Init(void);
 static void MX_SPI3_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_TIM2_Init(void);
+static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* Прототипы функций для работы с таймером TIM2, настроенным на 1 МГц -> 1 мкс */
@@ -94,10 +110,17 @@ void startTimerTIM2(void);
 void stopTimerTIM2(void);
 void resetTimerTIM2(void);
 
+/* Прототипы функций для работы с таймером TIM5, настроенным на 1 МГц -> 1 мкс */
+void startTimerTIM1(void);
+
 /** Функция обработки входящих сообщений по UDP
- * 	описание в main.c необходимо для вызова функций другиз библиотек
+ * 	описание в main.c необходимо для вызова функций других библиотек
  */
 void udpReceiveHandler(void);
+
+/** Тестовая функция для проверки пинов STEP - DIR
+ */
+void testStepDirPin(void);
 
 /* USER CODE END PFP */
 
@@ -147,6 +170,12 @@ STEPPER_PINS_StructDef stepper8_pins = {(GPIO_StructDef_custom*)STEP8_GPIO_Port,
 /* Структуры шаговых моторов */
 STEPPER_StructDef stepper1;
 STEPPER_StructDef stepper2;
+STEPPER_StructDef stepper3;
+STEPPER_StructDef stepper4;
+STEPPER_StructDef stepper5;
+STEPPER_StructDef stepper6;
+STEPPER_StructDef stepper7;
+STEPPER_StructDef stepper8;
 
 /* Структуры пинов концевых переключателей и датчика нуля драйверов шаговых моторов */
 DRIVER_LIMIT_SWITCH_PINS_StructDef driver1_pins = {(GPIO_StructDef_custom*)EXTI_1_LS1_N_GPIO_Port, EXTI_1_LS1_N_Pin, NORMALLY_OPEN, \
@@ -184,13 +213,22 @@ DRIVER_LIMIT_SWITCH_PINS_StructDef driver8_pins = {(GPIO_StructDef_custom*)EXTI_
 /* Структуры драйверов шаговых моторов */
 DRIVER_StructDef driver1;
 DRIVER_StructDef driver2;
+DRIVER_StructDef driver3;
+DRIVER_StructDef driver4;
+DRIVER_StructDef driver5;
+DRIVER_StructDef driver6;
+DRIVER_StructDef driver7;
+DRIVER_StructDef driver8;
 
 /* Экземпляр структуры планировщика*/
 PLANNER_StructDef planner;
 
-/* Тестовая переменная для целевой позиции */
-int32_t target;
+/* Экземпляр структуры обработчика g - кода */
+HANDLER_GCODE_StructDef ghandler;
 
+
+/* Flag вкоючения обработки */
+bool RUN = false;
 /* USER CODE END 0 */
 
 /**
@@ -233,10 +271,16 @@ int main(void)
   MX_USART3_UART_Init();
   MX_LWIP_Init();
   MX_TIM2_Init();
+  MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
 
+  /* ----------------------------------------------- Инициализация -------------------------------------------- */
+
   /* Инициализация таймер DWT для одного шага в библиотеке stepper.h */
-  DWT_Init();
+//  DWT_Init();
+
+  /* Инициализация UDP сокета */
+  udpSocketInit();
 
   /* Инициализация указателей на функции HAL для работы библиотек stepper.h и driver.h */
   stepperFunctionsInit(function_pin_1);
@@ -247,46 +291,76 @@ int main(void)
   stepperInit(&stepper2, &stepper2_pins);
 
   /* Инициализация драйверов шаговых моторов */
-  driverInit(&driver1, &stepper1, &driver1_pins, 1600, ROTATIONAL);
-  driverInit(&driver2, &stepper2, &driver2_pins, 1600, ROTATIONAL);
+  driverInit(&driver1, &stepper1, &driver1_pins, 1600, LINEAR);
+  driverInit(&driver2, &stepper2, &driver2_pins, 1600, LINEAR);
 
   /* Инициализация планировщика*/
   plannerInit(&planner);
+  plannerFunctionsInit(function_time_3);
+
+  /* Инициализация обработчика g - команд*/
+  handlerGcodeInit(&ghandler);
+
+  /* ----------------------------------------------- Инициализация -------------------------------------------- */
 
   /* Добавить драйверы в планировщик */
-//  addDriver(&planner, &driver1, 0);
-//  addDriver(&planner, &driver2, 1);
+  addDriver(&planner, &driver1, 0);
+  addDriver(&planner, &driver2, 1);
 
-  /* Инициализация UDP сокета */
-  udpSocketInit();
-
-  /* Включение таймера TIM2 */
+  /* Запуск таймера TIM2 */
   startTimerTIM2();
+
+  /* Запуск таймера TIM1 */
+//  startTimerTIM1();
 
   /* Включить драйверы моторов */
   enableDriver(&driver1);
   enableDriver(&driver2);
 
-  setMoveMode(&driver1, POSITION_MODE);
-
   /* Тест */
+  driver1.stepper->_globDir = true;
 
+  planner._maxSpeed = 5000;
+  planner._curSpeed = planner._maxSpeed;
+  planner.stepTime = 1000000.0 / planner._maxSpeed;
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-//	  if(getStatusDriver(&driver1) == DRIVER_READY)
-//	  {
-//		  if(fifoRead(&netBuf, &target) == FIFO_OK )
-//		  {
-//			  setTargetDeg(&driver1, target);
-//		  }
-//	  }
+	  /* Вызов тестовой функции для проверки плат интерфейса шагового мотора */
+//	  testStepDirPin();
+
+	  /* Тикер осевого планировщика */
+
 
 	  /* Основные функции управления драйверами */
-	  tickDriver(&driver1);
+//	  tickDriver(&driver1);
+
+	  if(RUN == true)
+	  {
+		  if(availableForReadChar(&fifoGcodeBuf) == FIFO_OK)
+		  {
+			  handlerGcode(&ghandler);
+		  }
+
+		  handlerGcommand(&ghandler);
+
+		  if(availableForWrite(&fifoBufSteps) == FIFO_OVERFLOW) planner._workState = PLANNER_RUN;
+
+		  if (availableForRead(&fifoBufSteps) == FIFO_OK)
+		  {
+			  /* Тикер планировщика многоосевого движения */
+			  plannerTickTest(&planner);
+		  }
+
+		  if(availableForReadChar(&fifoGcodeBuf) == FIFO_EMPTY && availableForRead(&fifoBufSteps) == FIFO_EMPTY)
+		  {
+			  handlerStateCalculate(&ghandler);
+			  RUN = false;
+		  }
+	  }
 
     /* USER CODE END WHILE */
 
@@ -548,6 +622,52 @@ static void MX_SPI3_Init(void)
   /* USER CODE BEGIN SPI3_Init 2 */
 
   /* USER CODE END SPI3_Init 2 */
+
+}
+
+/**
+  * @brief TIM1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM1_Init(void)
+{
+
+  /* USER CODE BEGIN TIM1_Init 0 */
+
+  /* USER CODE END TIM1_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM1_Init 1 */
+
+  /* USER CODE END TIM1_Init 1 */
+  htim1.Instance = TIM1;
+  htim1.Init.Prescaler = 1680 - 1;
+  htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim1.Init.Period = 50000 - 1;
+  htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim1.Init.RepetitionCounter = 0;
+  htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim1, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_UPDATE;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM1_Init 2 */
+
+  /* USER CODE END TIM1_Init 2 */
 
 }
 
@@ -890,6 +1010,16 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+/** Запуск таймера для интерполятора
+ * 	Используется таймер TIM3
+ */
+void startTimerTIM1(void)
+{
+	HAL_TIM_Base_Start(&htim1);
+	HAL_TIM_Base_Start_IT(&htim1);
+}
+
+
 /** Запуск таймера для отсчета времени в микросекундах
  * 	Используется таймер TIM2
  */
@@ -929,88 +1059,131 @@ uint32_t getMicrosecondsTIM2(void)
  */
 void udpReceiveHandler(void)
 {
-	if(rxBuf[0] == 'T' && rxBuf[1] == 'S')
+	if(rxBuf[0] == '5' && rxBuf[1] == '5')
 	{
-		int16_t speed = strtol(&rxBuf[2], NULL, 10);
-		setSpeedDeg(&driver1, speed);
+		RUN = true;
+		memset(rxBuf, 0, 128);
+		return;
+	}
 
-		char data[256];
-		sprintf(data, "STM32: Target velocity = %d; Counter received message = %d;\n", speed, counter);
-		udpClientSend(data);
+	if(rxBuf[0] == '1' && rxBuf[1] == '7')
+	{
+		fifoClear(&fifoBufSteps);
+
+		/* Переинициализация FIFO буфера G - команд */
+		fifoGcodeBuf.tail = 0;
+		fifoGcodeBuf.head = 243;
+
+		ghandler._workState = HANDLER_GCODE_READY;
 
 		memset(rxBuf, 0, 128);
 		return;
 	}
 
-	if(rxBuf[0] == 'M' && rxBuf[1] == 'S')
+	if(rxBuf[0] == 'S')
 	{
-		uint16_t speed = strtol(&rxBuf[2], NULL, 10);
-		setMaxSpeedDeg(&driver1, speed);
+		/* MOVE_MODE */
+		if(rxBuf[1] == 'R' && rxBuf[2] == 'M') // Задать тип управление драйвером
+		{
+			char data[256];
 
-		char data[256];
-		sprintf(data, "STM32: Max speed = %d; Counter received message = %d;\n", speed, counter);
-		udpClientSend(data);
+			if(rxBuf[3] == 'V')
+			{
+				sprintf(data, "%ld - STM32: Movement mode = VELOCITY_MODE;\n", counter);
+				setRunMode(&driver1, VELOCITY_MODE);
+			}
+			else if(rxBuf[3] == 'P')
+			{
+				sprintf(data, "%ld - STM32: Movement mode = POSITION_MODE;\n", counter);
+				setRunMode(&driver1, POSITION_MODE);
+			}
+			else
+			{
+				sprintf(data, "%ld - STM32: Error changing movement mode;\n", counter);
+			}
 
-		memset(rxBuf, 0, 128);
-		return;
+			udpClientSend(data);
+
+			memset(rxBuf, 0, 128);
+			return;
+		}
+
+		/* ACCELERATION */
+		if(rxBuf[1] == 'A') // Задать ускорение
+		{
+			uint16_t acceleration = strtol(&rxBuf[2], NULL, 10);
+			setAccelerationDeg(&driver1, acceleration);
+
+			char data[256];
+			sprintf(data, "%ld - STM32: Acceleration (deg/sec^2) = %d;\n", counter, acceleration);
+			udpClientSend(data);
+
+			memset(rxBuf, 0, 128);
+			return;
+		}
+
+		/* VELOCITY_MODE */
+		if(rxBuf[1] == 'T' && rxBuf[2] == 'S') // Задать целевую скорость
+		{
+			int16_t speed = strtol(&rxBuf[3], NULL, 10);
+			setTargetSpeedDeg(&driver1, speed);
+
+			char data[256];
+			sprintf(data, "%ld - STM32: Target velocity (deg/sec) = %d;\n", counter, speed);
+			udpClientSend(data);
+
+			memset(rxBuf, 0, 128);
+			return;
+		}
+
+		/* POSITION_MODE */
+		if(rxBuf[1] == 'M' && rxBuf[2] == 'S') // Задать максимальную скорость
+		{
+			uint16_t speed = strtol(&rxBuf[3], NULL, 10);
+			setMaxSpeedDeg(&driver1, speed);
+
+			char data[256];
+			sprintf(data, "%ld - STM32: Max speed (deg/sec) = %d;\n", counter, speed);
+			udpClientSend(data);
+
+			memset(rxBuf, 0, 128);
+			return;
+		}
+
+		if(rxBuf[1] == 'T' && rxBuf[2] == 'P') // Задать целевую позицию
+		{
+			int16_t target_pos = strtol(&rxBuf[3], NULL, 10);
+			setTargetPosDeg(&driver1, target_pos);
+
+			char data[512];
+			sprintf(data, "%ld - STM32: Target position (deg) = %d;\n", counter, target_pos);
+			udpClientSend(data);
+
+			memset(rxBuf, 0, 128);
+			return;
+		}
+
 	}
 
-	if(rxBuf[0] == 'G' && rxBuf[1] == 'P')
+	if(rxBuf[0] == 'G')
 	{
-		char data[256];
-		sprintf(data, "STM32: Current position = %ld; Counter received message = %d;\n", (long int)getCurrentPosDeg(&driver1), counter);
-		udpClientSend(data);
+		if(rxBuf[1] == 'C' && rxBuf[2] == 'P') // Получить позицию
+		{
+			char data[256];
+			sprintf(data, "%ld - STM32: Current position = %ld;\n", counter, (int32_t)getCurrentPosDeg(&driver1));
+			udpClientSend(data);
 
-		memset(rxBuf, 0, 128);
-		return;
+			memset(rxBuf, 0, 128);
+			return;
+		}
 	}
 
-	if(rxBuf[0] == 'A')
-	{
-		uint16_t acceleration = strtol(&rxBuf[1], NULL, 10);
-		setAccelerationDeg(&driver1, acceleration);
+	char data[256];
+	sprintf(data, "%ld - STM32: Echo - %s\n", counter, rxBuf);
+	udpClientSend(data);
 
-		char data[256];
-		sprintf(data, "STM32: Acceleration = %d; Counter received message = %d;\n", acceleration, counter);
-		udpClientSend(data);
-
-		memset(rxBuf, 0, 128);
-		return;
-	}
-
-	if(rxBuf[0] == 'T' && rxBuf[1] == 'P')
-	{
-		int16_t target_pos = strtol(&rxBuf[2], NULL, 10);
-		setTargetPosDeg(&driver1, target_pos);
-
-		char data[512];
-		sprintf(data, "%d - STM32: Target position (steps) = %ld; s1 = %ld; s2 = %ld; s3 = %ld; N = %ld;\n", counter, (int32_t)(target_pos * driver1._stepsPerDeg), driver1._s1, driver1._s2, driver1._s3, driver1.N);
-		udpClientSend(data);
-
-		memset(rxBuf, 0, 128);
-		return;
-	}
-
-	int target_pos = strtol(rxBuf, NULL, 10);
 	memset(rxBuf, 0, 128);
-
-	if(fifoWrite(&netBuf, target_pos) == FIFO_OVERFLOW)
-	{
-		char data[256];
-		sprintf(data, "STM32: Fifo-buffer is overflow! Counter received message = %d;\n", counter);
-		udpClientSend(data);
-		return;
-	}
-//	char data[256];
-//
-//	int target_pos = strtol(rxBuf, NULL, 10);
-//	memset(rxBuf, 0, 128);
-//
-//	setTarget(&driver1, target_pos);
-//	setTarget(&driver2, target_pos);
-//
-//	sprintf(data, "target = %d;\n", target_pos);
-//	udpClientSend(data);
+	return;
 }
 
 /** Функция проверки связи с пинами STEP - DIR
@@ -1040,6 +1213,14 @@ void testStepDirPin()
 
 	HAL_Delay(500);
 }
+
+/*void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim)
+{
+	if(htim->Instance == TIM1)
+	{
+		HAL_GPIO_TogglePin(GPIOE, GPIO_PIN_9);
+	}
+}*/
 
 /* USER CODE END 4 */
 

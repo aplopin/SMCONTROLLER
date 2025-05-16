@@ -1,9 +1,13 @@
 /**
- * @file dwt.h
- * @brief A Library for using DWT timer for microsecond operations calculations
- * @version 0.1.0
- * @authors aplopin
- */
+  ******************************************************************************
+  * @Файл    	dwt.h
+  * @Автор  	PromisLab
+  * @Описание   Этот файл описывает прототипы функций FIFO буфера, который
+  * 			использует указатель на статически выделенную область памяти
+  *
+  ******************************************************************************
+  *
+  */
 
 /* ------------------------------ USAGE --------------------------------------*/
 /**
@@ -14,59 +18,25 @@
 #ifndef INC_DWT_H_
 #define INC_DWT_H_
 
-#pragma once
+#include <stdint.h>
 
 #define    DWT_CYCCNT	*(volatile uint32_t*)0xE0001004
 #define    DWT_CONTROL	*(volatile uint32_t*)0xE0001000
 #define    SCB_DEMCR	*(volatile uint32_t*)0xE000EDFC
 
-/* Functions prototypes ------------------------------------------------------*/
+/* Debug Exception and Monitor Control Register Definitions */
+#define CoreDebug_DEMCR_TRCENA_Pos         24U                                            /*!< CoreDebug DEMCR: TRCENA Position */
+#define CoreDebug_DEMCR_TRCENA_Msk         (1UL << CoreDebug_DEMCR_TRCENA_Pos)            /*!< CoreDebug DEMCR: TRCENA Mask */
+
+#define DWT_CTRL_CYCCNTENA_Pos              0U                                         /*!< DWT CTRL: CYCCNTENA Position */
+#define DWT_CTRL_CYCCNTENA_Msk             (0x1UL /*<< DWT_CTRL_CYCCNTENA_Pos*/)       /*!< DWT CTRL: CYCCNTENA Mask */
+
+/* --------------------------------------- Прототипы функций библиотеки dwt.h --------------------------------------- */
+
 void DWT_Init(void);
 double DWT_GetDuration(void (*function)(void));
 void DWT_usDelay(uint32_t us);
 
-/**
-  * @brief  This function initializes the DWT counter.
-  * @param[in] None
-  * @return None
-  */
-void DWT_Init()
-{
-	/* Allow the use of the counter DWT */
-	SCB_DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
-	/* Turn on the counter */
-	DWT_CONTROL |= DWT_CTRL_CYCCNTENA_Msk;
-
-}
-
-/**
-  * @brief  This method returns the function time in us
-  * @param[in] Function pointer
-  * @return Time in us
-  */
-double DWT_GetDuration(void (*function)(void))
-{
-	/* Reset the counter */
-	DWT_CYCCNT = 0;
-
-	function();
-
-	/* Return time to us */
-	return (double) DWT_CYCCNT / SystemCoreClock * 1000000;
-}
-
-/**
-  * @brief  This function produces a time delay in us.
-  * @param[in] Time in us
-  * @return None
-  */
-void DWT_usDelay(uint32_t us)
-{
-	/* Convert microseconds to processor ticks */
-	uint32_t us_count_tic =  us * (SystemCoreClock / 1000000);
-	/* Reset the counter */
-	DWT_CYCCNT = 0;
-	while(DWT_CYCCNT < us_count_tic);
-}
+/* --------------------------------------- Прототипы функций библиотеки dwt.h --------------------------------------- */
 
 #endif /* INC_DWT_H_ */

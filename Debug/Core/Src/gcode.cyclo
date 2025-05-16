@@ -1,0 +1,4 @@
+../Core/Src/gcode.c:589:6:handlerGcodeInit	1
+../Core/Src/gcode.c:608:6:handlerGcode	10
+../Core/Src/gcode.c:691:6:handlerGcommand	10
+../Core/Src/gcode.c:746:6:handlerStateCalculate	3

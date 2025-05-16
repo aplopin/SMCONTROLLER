@@ -1,0 +1,6 @@
+../Core/Src/interpolator.c:38:6:interpolatorInit	1
+../Core/Src/interpolator.c:47:30:setLine	12
+../Core/Src/interpolator.c:87:30:setArc	11
+../Core/Src/interpolator.c:128:30:handlerLine	8
+../Core/Src/interpolator.c:193:30:handlerArc	18
+../Core/Src/interpolator.c:271:9:setBinarySteps	3

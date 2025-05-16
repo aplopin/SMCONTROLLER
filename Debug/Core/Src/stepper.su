@@ -1,0 +1,8 @@
+../Core/Src/stepper.c:19:6:stepperFunctionsInit	16	static
+../Core/Src/stepper.c:31:6:stepperInit	16	static
+../Core/Src/stepper.c:52:6:step	16	static
+../Core/Src/stepper.c:72:6:setDir	16	static
+../Core/Src/stepper.c:101:6:enableStepper	16	static
+../Core/Src/stepper.c:114:6:disableStepper	16	static
+../Core/Src/stepper.c:132:6:invertPinEn	16	static
+../Core/Src/stepper.c:148:6:invertPinDir	16	static

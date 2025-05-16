@@ -1,0 +1,8 @@
+../Core/Src/fifo_char.c:20:14:fifoInitChar	24	static
+../Core/Src/fifo_char.c:32:14:fifoClearChar	16	static
+../Core/Src/fifo_char.c:47:10:cellsForReadChar	16	static
+../Core/Src/fifo_char.c:55:14:availableForReadChar	16	static
+../Core/Src/fifo_char.c:63:10:cellsForWriteChar	24	static
+../Core/Src/fifo_char.c:70:14:availableForWriteChar	16	static
+../Core/Src/fifo_char.c:78:14:fifoWriteChar	16	static
+../Core/Src/fifo_char.c:92:14:fifoReadChar	16	static
