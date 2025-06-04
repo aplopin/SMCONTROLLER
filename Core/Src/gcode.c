@@ -1,38 +1,35 @@
 #include <string.h>
 #include <math.h>
 
-#include "fifo_char.h"
-#include "interpolator.h"
 #include "gcode.h"
+#include "fifo_char.h"
+
 
 /* --------------------------------------- Импортированные переменные из библиотеки interpolator.h --------------------------------------- */
 
 /* ------------ Глобальные координаты станка (шаги) ------------- */
 
 /* Координаты линейных осей станка */
-extern int64_t x;
-extern int64_t y;
-extern int64_t z;
+extern volatile int64_t x;
+extern volatile int64_t y;
+extern volatile int64_t z;
 
 /* Координаты поворотных осей станка */
-extern int64_t a;
-extern int64_t b;
-extern int64_t c;
+extern volatile int64_t a;
+extern volatile int64_t b;
+extern volatile int64_t c;
 
 /* ------------ Глобальные координаты станка (мм) ------------- */
 
 /* Координаты линейных осей станка */
-extern double X;
-extern double Y;
-extern double Z;
+extern volatile double X;
+extern volatile double Y;
+extern volatile double Z;
 
 /* Координаты поворотных осей станка */
-extern double A;
-extern double B;
-extern double C;
-
-/* Импортированный экземпляр структуры интерполятора */
-INTERPOLATOR_StructDef interpolator;
+extern volatile double A;
+extern volatile double B;
+extern volatile double C;
 
 /* --------------------------------------- Импортированные переменные из библиотеки interpolator.h --------------------------------------- */
 
@@ -47,6 +44,28 @@ LINE_StructDef line;
 
 /* Структура дуги */
 ARC_StructDef arc;
+
+/* Дефолтный буфер g - кода */
+char* GcodeBuffer[FIFO_GCODE_BUF_SIZE];
+
+/* 5 строк, траектория - "пример" */
+char* GcodeBufferExample[5] =
+{
+	"0",
+	"G00 X0.000000 Y0.000000",
+	"G01 X75.0 Y25.0",
+	"G03 X-75.0 Y25.0 I-75.0 J25.0",
+	"G01 X0.0 Y0.0"
+};
+
+/* 4 строки, траектория - "окружность" */
+char* GcodeBufferCircle[4] =
+{
+	"0",
+	"G00 X0.000000 Y0.000000",
+	"G02 X0.0 Y40.0 I0.0 J20.0",
+	"G02 X0.0 Y0.0 I0.0 J-20.0"
+};
 
 /* 19 строк, траектория - "тестовая деталь" */
 char* GcodeBuffer1[19] =
@@ -578,13 +597,16 @@ char* GcodeBuffer4[243] =
 	"G01 X18.906251 Y73.039063"
 };
 
-/* Fifo буфер G - команд */
+/* Экземпляр структуры интерполятора */
+INTERPOLATOR_StructDef interpolator;
+
+/* Fifo буфер g - команд */
 FIFO_CHAR_StructDef fifoGcodeBuf;
 
 /* Импортированный FIFO буфер шагов интерполятора */
 extern FIFO_StructDef fifoBufSteps;
 
-/** Инициализация структуры обработчика G - команд
+/** Инициализация структуры обработчика g - команд
  */
 void handlerGcodeInit(HANDLER_GCODE_StructDef* ghandler)
 {
@@ -597,12 +619,26 @@ void handlerGcodeInit(HANDLER_GCODE_StructDef* ghandler)
 	interpolatorInit(ghandler->interpolator);
 
 	/* Инициализация FIFO буфера G - команд */
-	fifoInitChar(&fifoGcodeBuf, GcodeBuffer4, 256);
-	fifoGcodeBuf.head = 243;
+	fifoInitChar(&fifoGcodeBuf, GcodeBuffer, FIFO_GCODE_BUF_SIZE);
 }
 
-/** Обработчик G - команд, на вход поступает строка (в будущем будет бинарное представление команды)
- * 	На выходе передается статус, что G команда обработана, и выставлен статус обработчика - номер G - команды,
+/** Тикер обработчика g - кода
+ * 	В теле тикера происходит анализ g - кода и расчет шагов интерполятором
+ * 	В результате работы обработчика заполняется буфер шагов интерполятора, который
+ * 	в дальнейшем библиотека planner.h использует для планирования скорости движения
+ */
+void tickGcodeHandler(HANDLER_GCODE_StructDef* ghandler)
+{
+	if(availableForReadChar(&fifoGcodeBuf) == FIFO_OK)
+	{
+		handlerGcode(ghandler);
+	}
+
+	handlerGcommand(ghandler);
+}
+
+/** Обработчик g - команд, на вход поступает строка (в будущем будет бинарное представление команды)
+ * 	На выходе передается статус, что G команда обработана, и выставлен статус обработчика - номер g - команды,
  * 	по которой необходимо считать шаги
  */
 void handlerGcode(HANDLER_GCODE_StructDef* ghandler)
@@ -623,8 +659,6 @@ void handlerGcode(HANDLER_GCODE_StructDef* ghandler)
 			{
 				x = round(Xk / MM_PER_STEP); y = round(Yk / MM_PER_STEP);
 				X = Xk; Y = Yk;
-
-//				printf("G00 X%.6f Y%.6f\n", x * MM_PER_STEP, y * MM_PER_STEP);
 
 				ghandler->_command = G00;
 
@@ -743,7 +777,10 @@ void handlerGcommand(HANDLER_GCODE_StructDef* ghandler)
 	return;
 }
 
-void handlerStateCalculate(HANDLER_GCODE_StructDef* ghandler)
+/**	Обработчик статуса завершения исполнения программы движения
+ * 	отслеживает статуc структуры ghandler
+ */
+void handlerEndState(HANDLER_GCODE_StructDef* ghandler)
 {
 	if (ghandler->_workState == HANDLER_GCODE_READY)
 	{

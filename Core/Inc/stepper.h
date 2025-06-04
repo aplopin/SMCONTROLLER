@@ -1,12 +1,3 @@
-/**
-  ******************************************************************************
-  * @file    	stepper.h
-  * @author  	PromisLab
-  * @brief   	Этот файл описывает прототипы функций работы с шаговым мотором
-  *
-  ******************************************************************************
-  */
-
 #ifndef INC_STEPPER_H
 #define INC_STEPPER_H
 
@@ -15,24 +6,43 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#include "types.h"
-
 #define STEP_TIME 5 		//< Время переключения состояния пина STEP в мкс (по-умолчанию 5 мкс)
 
-/* Определение структуры порта DIO из стандартной библиотеки HAL_STM32
+/* Тип данных - состояние пина DIO из стандартной библиотеки HAL STM32
+ * для использования в данной библиотеке
+ */
+typedef enum
+{
+	PIN_RESET = 0,
+	PIN_SET
+
+} pin_state_custom_t;
+
+/* Тип данных - состояние пина EN
+ * OFF - мотор выключен
+ * ON - мотор включен
+ */
+typedef enum
+{
+	OFF = 0,
+	ON
+
+} statusEn_t;
+
+/* Определение структуры порта DIO из стандартной библиотеки HAL STM32
  * для использования указателей GPIO_TypeDef *GPIOx
  */
 typedef struct
 {
-	volatile uint32_t MODER;    /*!< GPIO port mode register,               Address offset: 0x00      */
-	volatile uint32_t OTYPER;   /*!< GPIO port output type register,        Address offset: 0x04      */
-	volatile uint32_t OSPEEDR;  /*!< GPIO port output speed register,       Address offset: 0x08      */
-	volatile uint32_t PUPDR;    /*!< GPIO port pull-up/pull-down register,  Address offset: 0x0C      */
-	volatile uint32_t IDR;      /*!< GPIO port input data register,         Address offset: 0x10      */
-	volatile uint32_t ODR;      /*!< GPIO port output data register,        Address offset: 0x14      */
-	volatile uint32_t BSRR;     /*!< GPIO port bit set/reset register,      Address offset: 0x18      */
-	volatile uint32_t LCKR;     /*!< GPIO port configuration lock register, Address offset: 0x1C      */
-	volatile uint32_t AFR[2];   /*!< GPIO alternate function registers,     Address offset: 0x20-0x24 */
+	volatile uint32_t MODER;
+	volatile uint32_t OTYPER;
+	volatile uint32_t OSPEEDR;
+	volatile uint32_t PUPDR;
+	volatile uint32_t IDR;
+	volatile uint32_t ODR;
+	volatile uint32_t BSRR;
+	volatile uint32_t LCKR;
+	volatile uint32_t AFR[2];
 
 } GPIO_StructDef_custom;
 
@@ -71,18 +81,18 @@ typedef struct
 	volatile int8_t dir;
 
 	/* Статус включения мотора */
-	statusEn_t en;
+	volatile statusEn_t en;
 
 	/* Переменная - флаг для определения инвертированного состояния пина EN */
-	bool _globEn;
+	volatile bool _globEn;
 
 	/* Переменная - флаг для определения инвертированного состояния пина DIR */
-	bool _globDir;
+	volatile bool _globDir;
 
 } STEPPER_StructDef;
 
 /* Определение пустого указателя на функию с параметрами */
-typedef void (*writePinFunction_void_ptr)(GPIO_StructDef_custom*, uint16_t, PinState_custom);
+typedef void (*writePinFunction_void_ptr)(GPIO_StructDef_custom*, uint16_t, pin_state_custom_t);
 
 /* --------------------------------------- Прототипы функций библиотеки stepper.h --------------------------------------- */
 

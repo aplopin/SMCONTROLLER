@@ -25,7 +25,7 @@ int32_t counter = 0;
 FIFO_StructDef fifoNetBuf;
 
 /* Статический буфер сетевого интерфейса UDP */
-int32_t netBuf[FIFO_NET_SIZE];
+int8_t netBuf[FIFO_NET_SIZE];
 
 /** Функция инициализации UDP сетевого интерфейса
  */

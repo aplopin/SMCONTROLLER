@@ -1,5 +1,3 @@
-#pragma once
-
 #ifndef INC_INTERPOLATOR_H_
 #define INC_INTERPOLATOR_H_
 
@@ -12,11 +10,16 @@ extern "C" {
 
 #include "fifo.h"
 
-#define MM_PER_STEP 	0.003125F					//< Расстояние в мм на один шаг мотора - 1600 шагов за оборот
-//#define MM_PER_STEP 	0.00625F					//< Расстояние в мм на один шаг мотора - 800 шагов за оборот
+//#define MM_PER_STEP 	0.003125F					//< Расстояние в мм на один шаг мотора - 1600 шагов за оборот
+#define MM_PER_STEP 	0.00625F					//< Расстояние в мм на один шаг мотора - 800 шагов за оборот
 #define EPS             1e-09                       //< Бесконечно малое число для сравнения с 0 чисел double
 
-/* Тип данных - состояние работы планировщика траектории */
+/* Тип данных - состояние работы интерполятора
+ * INTERPOLATOR_ERROR - интерполятор в ошибке
+ * INTERPOLATOR_DONE - интерполятор закончил расчет g - команды
+ * INTERPOLATOR_READY - интерполятор готов расчитать шаг текущей g - команды
+ * INTERPOLATOR_PROCESSING - интерполятор в процессе расчета шага текущей g - команды
+ */
 typedef enum
 {
 	INTERPOLATOR_ERROR = -1,
@@ -113,7 +116,7 @@ handler_interpolator_state_t setLine(LINE_StructDef* line, double Xk, double Yk)
 handler_interpolator_state_t setArc(ARC_StructDef* arc, double Xk, double Yk, double I, double J, int8_t dir);
 handler_interpolator_state_t handlerLine(INTERPOLATOR_StructDef* interpolator, FIFO_StructDef* buf, LINE_StructDef* line, uint8_t axis1, uint8_t axis2);
 handler_interpolator_state_t handlerArc(INTERPOLATOR_StructDef* interpolator, FIFO_StructDef* buf, ARC_StructDef* arc, uint8_t axis1, uint8_t axis2);
-uint8_t setBinarySteps(uint8_t axis, int8_t step);
+uint8_t setStepsBin(uint8_t axis, int8_t step);
 
 #ifdef __cplusplus
 }

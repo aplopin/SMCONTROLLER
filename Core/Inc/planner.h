@@ -8,17 +8,16 @@
 #include <math.h>
 
 #include "driver.h"
-#include "interpolator.h"
 
 #define GP_MIN_US 300000  			//< период, длиннее которого мотор можно резко тормозить или менять скорость
 #define AXES 2 						//< число осей интерполятора
 
-/* Тип данных - состояние работы драйвера
- * ERR - драйвер в ошибке
- * INIT - драйвер инициализирован
- * READY - драйвер готов к работе, мотор не двигается
- * RUN - драйвер в работе, мотор двигается
- * BRAKE - драйвера был остановлен
+/* Тип данных - состояние работы интерполяционного планировщика
+ * PLANNER_ERR - планировщик в ошибке
+ * PLANNER_OK - планировщика закончил работу без ошибки
+ * PLANNER_INIT - планировщик инициализирован
+ * PLANNER_READY - планировщик готов к работе, моторы не запущены
+ * PLANNER_RUN - планировщик в работе, моторы запущены
  */
 typedef enum
 {
@@ -27,7 +26,9 @@ typedef enum
 	PLANNER_INIT,
 	PLANNER_READY,
 	PLANNER_RUN,
-	PLANNER_BRAKE
+	PLANNER_PAUSE,
+	PLANNER_END,
+	PLANNER_STOP
 
 } planner_state_t;
 
@@ -36,7 +37,8 @@ typedef enum
 	BRAKING = -1,
 	UNIFORM = 0,
 	ACCELERATION = 1,
-	STAND = 2
+	SPECIAL = 2,
+	STAND
 
 } planner_phase_t;
 
@@ -56,16 +58,19 @@ typedef struct
 	/* ------------ Переменные интерполятора ------------- */
 
 	/* Текущая скорость интерполятора */
-	float _curSpeed;
+	int32_t _curSpeed;
 
 	/* Максимальная скорость интерполятора */
-	float _maxSpeed;
+	int32_t _maxSpeed;
 
 	/* Ускорение интерполятора */
-	float _accel;
+	int32_t _accel;
 
 	/* Стоп - флаг */
 	bool _stopFlag;
+
+	/* Пауза - флаг*/
+	bool _pauseFlag;
 
 	/* Фаза движения */
 	planner_phase_t _phase;
@@ -167,14 +172,18 @@ void addDriver(PLANNER_StructDef* planner, DRIVER_StructDef* driver, uint8_t axi
 /* ------------------------------------ Управляющие функции ------------------------------------ */
 
 void tickPlanner(PLANNER_StructDef* planner);
-void plannerTickTest(PLANNER_StructDef* planner);
 void plannerSteps(PLANNER_StructDef* planner);
 void plannerVelocity(PLANNER_StructDef* planner);
+void plannerPhase(PLANNER_StructDef* planner);
 
-param_change_t setAccelerationPlanner(PLANNER_StructDef* planner, float accel);
+param_change_t setPlannerAcceleration(PLANNER_StructDef* planner, float accel);
+param_change_t setPlannerMaxSpeed(PLANNER_StructDef* planner, float speed);
 
 void brakePlanner(PLANNER_StructDef* planner);
-void startPlanner(PLANNER_StructDef* planner);
+void pausePlanner(PLANNER_StructDef* planner);
+void resumePlanner(PLANNER_StructDef* planner);
+void stopPlanner(PLANNER_StructDef* planner);
+void calculatePlannerInitialParam(PLANNER_StructDef* planner);
 
 
 #endif /* INC_PLANNER_H_ */

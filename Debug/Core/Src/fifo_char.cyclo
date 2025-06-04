@@ -1,8 +1,8 @@
-../Core/Src/fifo_char.c:20:14:fifoInitChar	2
-../Core/Src/fifo_char.c:32:14:fifoClearChar	1
-../Core/Src/fifo_char.c:47:10:cellsForReadChar	2
-../Core/Src/fifo_char.c:55:14:availableForReadChar	2
-../Core/Src/fifo_char.c:63:10:cellsForWriteChar	1
-../Core/Src/fifo_char.c:70:14:availableForWriteChar	2
-../Core/Src/fifo_char.c:78:14:fifoWriteChar	2
-../Core/Src/fifo_char.c:92:14:fifoReadChar	3
+../Core/Src/fifo_char.c:9:14:fifoInitChar	2
+../Core/Src/fifo_char.c:24:14:fifoClearChar	1
+../Core/Src/fifo_char.c:39:10:cellsForReadChar	2
+../Core/Src/fifo_char.c:47:14:availableForReadChar	2
+../Core/Src/fifo_char.c:55:10:cellsForWriteChar	1
+../Core/Src/fifo_char.c:62:14:availableForWriteChar	2
+../Core/Src/fifo_char.c:70:14:fifoWriteChar	2
+../Core/Src/fifo_char.c:84:14:fifoReadChar	3

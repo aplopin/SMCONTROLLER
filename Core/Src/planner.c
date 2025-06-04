@@ -1,5 +1,5 @@
 #include "planner.h"
-#include "driver.h"
+
 #include "interpolator.h"
 
 /* Статический буфер - массив шагов */
@@ -13,35 +13,35 @@ extern FIFO_StructDef fifoBufSteps;
 /* ------------ Глобальные координаты станка (шаги) ------------- */
 
 /* Координаты линейных осей станка */
-extern int64_t x;
-extern int64_t y;
-extern int64_t z;
+extern volatile int64_t x;
+extern volatile int64_t y;
+extern volatile int64_t z;
 
 /* Координаты поворотных осей станка */
-extern int64_t a;
-extern int64_t b;
-extern int64_t c;
+extern volatile int64_t a;
+extern volatile int64_t b;
+extern volatile int64_t c;
 
 /* ------------ Глобальные координаты станка (мм) ------------- */
 
 /* Координаты линейных осей станка */
-extern double X;
-extern double Y;
-extern double Z;
+extern volatile double X;
+extern volatile double Y;
+extern volatile double Z;
 
 /* Координаты поворотных осей станка */
-extern double A;
-extern double B;
-extern double C;
+extern volatile double A;
+extern volatile double B;
+extern volatile double C;
 
 /* --------------------------------------- Импортированные переменные из библиотеки interpolator.c --------------------------------------- */
 
 /* Указатель на функцию для измерения времени */
-static timeFunction_uint32_t_ptr getTime;
+static timeFunction_uint32_t_ptr getPlannerMicros;
 
 void plannerFunctionsInit(timeFunction_uint32_t_ptr function1)
 {
-	getTime = function1;
+	getPlannerMicros = function1;
 }
 
 /** Инициализация планироващика
@@ -59,9 +59,14 @@ void plannerInit(PLANNER_StructDef* planner)
 
 	planner->_curSpeed = 0;
 	planner->_maxSpeed = 20 * 160; /* 20 мм/c --> 20 * 160 шаг/c */
+	planner->_accel = 10 * 200; /* Ускорение по умолчанию 10 мм/c^2 */
+
+	planner->tickUs = 0;
 	planner->stepTime = 0;
+	planner->_prevTime = 0;
 
 	planner->_stopFlag = false;
+	planner->_pauseFlag = false;
 	planner->_workState = PLANNER_INIT;
 	planner->_phase = STAND;
 
@@ -70,6 +75,7 @@ void plannerInit(PLANNER_StructDef* planner)
 	planner->_n = 0;
 	planner->N = 0;
 	planner->_cmin = 1.0;
+
 	planner->_s1 = 0;
 	planner->_s2 = 0;
 	planner->_s3 = 0;
@@ -84,70 +90,16 @@ void tickPlanner(PLANNER_StructDef* planner)
 {
 	if (planner->_workState == PLANNER_RUN)
 	{
-//		planner->tickUs = getMicros();
+		/* Сравнение ускорения с нулем */
+		if (planner->_accel > EPS) plannerVelocity(planner);
 
-		/*  */
-//		if (availableForRead(&fifoBufSteps) == true && planner->_accel != 0) plannerVelocity(planner);
+		planner->tickUs = getPlannerMicros();
 
-		/* Основной таймер степпера */
-		if (planner->stepTime != 0 && planner->tickUs - planner->_prevTime >= planner->stepTime)
-		{
-			planner->_prevTime = planner->tickUs;
-
-			/* Проверка завершения работы планировщика по флагу доступа к ячейкам fifo буфера шагов */
-//			if (availableForRead(&fifoBufSteps) == false)
-//			{
-//				brakePlanner(planner);
-//			}
-
-			/* Чтение ячейки FIFO буфера шагов и воспроизведение шагов */
-			int8_t rx_bin;
-			fifoRead(&fifoBufSteps, &rx_bin);
-
-			for(uint8_t i = 0; i < AXES; i ++)
-			{
-				if((rx_bin & 3) == 1)
-				{
-					/* Устанавливаем направление и производим шаг мотором */
-					setDriverDir(planner->driver[i], 1);
-					stepDriver(planner->driver[i]);
-
-					break;
-				}
-				else if((rx_bin & 3) == 3)
-				{
-					/* Устанавливаем направление и производим шаг мотором */
-					setDriverDir(planner->driver[i], -1);
-					stepDriver(planner->driver[i]);
-
-					break;
-				}
-
-				rx_bin >>= (i + 1) * 2;
-			}
-		}
-	}
-}
-
-/** Планировщик шагов
- */
-void plannerTickTest(PLANNER_StructDef* planner)
-{
-	if (planner->_workState == PLANNER_RUN)
-	{
-		planner->tickUs = getTime();
-
-		/* Основной таймер степпера */
+		/* Основной таймер планировщика */
 		if (planner->tickUs - planner->_prevTime >= planner->stepTime)
 		{
 			planner->_prevTime = planner->tickUs;
 
-			/* Проверка завершения работы планировщика по флагу доступа к ячейкам fifo буфера шагов
-			if (availableForRead(&fifoBufSteps) == FIFO_EMPTY)
-			{
-				brakePlanner(planner);
-			}*/
-
 			/* Чтение ячейки FIFO буфера шагов и воспроизведение шагов */
 			int8_t rx_bin;
 			fifoRead(&fifoBufSteps, &rx_bin);
@@ -157,16 +109,16 @@ void plannerTickTest(PLANNER_StructDef* planner)
 				if((rx_bin & 3) == 1)
 				{
 					/* Устанавливаем направление и производим шаг мотором */
-					setDriverDir(planner->driver[i], 1);
-					stepDriver(planner->driver[i]);
+					planner->driver[i]->stepper->dir = 1;
+					step(planner->driver[i]->stepper);
 
 					break;
 				}
 				else if((rx_bin & 3) == 3)
 				{
 					/* Устанавливаем направление и производим шаг мотором */
-					setDriverDir(planner->driver[i], -1);
-					stepDriver(planner->driver[i]);
+					planner->driver[i]->stepper->dir = -1;
+					step(planner->driver[i]->stepper);
 
 					break;
 				}
@@ -176,33 +128,28 @@ void plannerTickTest(PLANNER_StructDef* planner)
 		}
 	}
 }
+
+static planner_phase_t phase;
 
 /** Планировщик скорости
  */
 void plannerVelocity(PLANNER_StructDef* planner)
 {
-	planner_phase_t phase = planner->_phase;
-
-	if(planner->_accel <= EPS)
-	{
-		planner->_curSpeed = planner->_maxSpeed;
-		planner->stepTime = 1000000.0 / planner->_maxSpeed;
-
-		return;
-	}
-
 	if (planner->tickUs - planner->_PlannerTime >= planner->stepTime)
 	{
+		if(planner->_pauseFlag == false)
+		{
+			/* Планировщик фазы движения */
+			plannerPhase(planner);
+		}
+
+		phase = planner->_phase;
+
 		/* Обновление переменной времени планировщика */
 		planner->_PlannerTime = planner->tickUs;
 
-		if(planner->_n >= planner->N)
-		{
-			planner->_phase = UNIFORM;
-		}
-
 		/* Основная логика разгона и торможения */
-		if(planner->_phase == ACCELERATION || planner->_phase == BRAKING)
+		if(phase == ACCELERATION || phase == BRAKING)
 		{
 			if(planner->_n == 0) planner->_cn = planner->_c0;
 			else if(planner->_n == 1) planner->_cn = 0.4056 * planner->_c0;
@@ -217,38 +164,30 @@ void plannerVelocity(PLANNER_StructDef* planner)
 			planner->_n += phase;
 		}
 
-		/* Условие достижения максимальной скорости */
-		if(planner->_phase == UNIFORM)
-		{
-			planner->_curSpeed = planner->_maxSpeed;
-			planner->stepTime = 1000000.0 / planner->_maxSpeed;
-		}
+		if(planner->_n < 0) planner->_workState = PLANNER_PAUSE;
+	}
+}
 
-		/* Особый случай первого шага при торможении */
-		if(planner->_k == planner->_s2)
-		{
-			planner->stepTime = (uint32_t)(planner->_cn) - STEP_TIME;
-			planner->_curSpeed = 1000000.0 / planner->_cn;
+void plannerPhase(PLANNER_StructDef* planner)
+{
+	if(planner->_n == planner->N && planner->_phase == ACCELERATION)
+	{
+		planner->_phase = UNIFORM;
+		return;
+	}
 
-			planner->_n --;
-		}
-
-		planner->_k ++;
+	if(cellsForRead(&fifoBufSteps) == planner->N)
+	{
+		planner->_phase = BRAKING;
+		return;
 	}
 }
 
 /** Запуск планировщика (запуск движения)
  */
-void startPlanner(PLANNER_StructDef* planner)
+void calculatePlannerInitialParam(PLANNER_StructDef* planner)
 {
 	uint32_t steps;
-
-//	if(availableForRead(&fifoBufSteps) == false)
-//	{
-//		planner->_workState = PLANNER_BRAKE;
-//		planner->_phase = STAND;
-//		return;
-//	}
 
 	if (planner->_accel == 0 || planner->_maxSpeed < MIN_SPEED_POS_MODE)
 	{
@@ -259,23 +198,15 @@ void startPlanner(PLANNER_StructDef* planner)
 	{
 		steps = cellsForRead(&fifoBufSteps);
 
+		planner->_n = 0;
+
 		planner->_phase = ACCELERATION;
 		planner->N = planner->_maxSpeed * planner->_maxSpeed / (2.0 * planner->_accel);
 
-		if(steps > 2 * planner->N)
+		if(steps < 2 * planner->N)
 		{
-			planner->_s1 = planner->N;
-			planner->_s2 = -1;
-			planner->_s3 = planner->N;
+			planner->N = steps / 2;
 		}
-		else
-		{
-			planner->_s1 = steps / 2;
-			planner->_s2 = (steps % 2 == 0) ? 0 : 1;
-			planner->_s3 = planner->_s1;
-		}
-
-		planner->_k = 0;
 	}
 
 	planner->_workState = PLANNER_RUN;
@@ -283,11 +214,12 @@ void startPlanner(PLANNER_StructDef* planner)
 
 /** Установить ускорение планировщика (мм/c^2)
  */
-param_change_t setAccelerationPlanner(PLANNER_StructDef* planner, float accel)
+param_change_t setPlannerAcceleration(PLANNER_StructDef* planner, float accel)
 {
 	if(planner->_workState == PLANNER_RUN) return PARAM_CHANGE_ERR;
 
-	planner->_accel = fabs(accel);
+	/* Перевод единиц измерения ускорения в шаги/с^2 для 800 шагов на оборот мотора */
+	planner->_accel = fabs(accel) * 160;
 
 	/* Считаем значение _c0 и _N по алгоритму плавного старта */
 	if(accel > EPS)
@@ -295,6 +227,19 @@ param_change_t setAccelerationPlanner(PLANNER_StructDef* planner, float accel)
 		planner->_c0 = 1000000.0 * sqrt(2.0 / planner->_accel);
 	}
 	else planner->_c0 = 0;
+
+	return PARAM_CHANGE_OK;
+}
+
+/** Установка максимальной скорости планировщика (мм/c^2)
+ *
+ */
+param_change_t setPlannerMaxSpeed(PLANNER_StructDef* planner, float speed)
+{
+	if(planner->_workState == PLANNER_RUN) return PARAM_CHANGE_ERR;
+
+	/* Перевод максимальной скорости в шаги/с^2 */
+	planner->_maxSpeed = fabs(speed) * 160;
 
 	return PARAM_CHANGE_OK;
 }
@@ -308,7 +253,7 @@ void addDriver(PLANNER_StructDef* planner, DRIVER_StructDef* driver, uint8_t axi
 
 /** Включить моторы
  */
-void enable(PLANNER_StructDef* planner)
+void enablePlanner(PLANNER_StructDef* planner)
 {
 	for(uint8_t i = 0; i < AXES; i ++)
 	{
@@ -318,7 +263,7 @@ void enable(PLANNER_StructDef* planner)
 
 /** Выключить моторы
  */
-void disable(PLANNER_StructDef* planner)
+void disablePlanner(PLANNER_StructDef* planner)
 {
 	for(uint8_t i = 0; i < AXES; i ++)
 	{
@@ -336,10 +281,7 @@ void power(bool v)
 
 // НАСТРОЙКИ
 
-/** Установка максимальной скорости планировщика в шаг/сек
- *
- */
-void setMaxSpeedPlanner(float nV);
+
 
 
 // ПЛАНИРОВЩИК
@@ -353,30 +295,46 @@ uint32_t getPeriod();
  */
 bool ready();
 
-/** Пауза (доехать до заданной точки и ждать). ready() не вернёт true, пока ты на паузе
+/** Функция паузы движения
  *
  */
-void pause();
-
-/** Остановить плавно (с заданным ускорением)
- *
- */
-void stop();
-
-/* Резкая остановка + выключение мотора
- */
-void brakePlanner(PLANNER_StructDef* planner)
+void pausePlanner(PLANNER_StructDef* planner)
 {
-	planner->_workState = PLANNER_BRAKE;
-	planner->stepTime = 0;
-	planner->_curSpeed = 0;
-	planner->_n = 0;
+	if(cellsForRead(&fifoBufSteps) > planner->N)
+	{
+		planner->_pauseFlag = true;
+		planner->_phase = BRAKING;
+	}
 }
 
 /** Продолжить после остановки/паузы
  *
  */
-void resume();
+void resumePlanner(PLANNER_StructDef* planner)
+{
+	calculatePlannerInitialParam(planner);
+	planner->_pauseFlag = false;
+
+	planner->_workState = PLANNER_RUN;
+}
+
+/** Функция резкой остановки
+ *
+ */
+void stopPlanner(PLANNER_StructDef* planner)
+{
+	planner->_workState = PLANNER_STOP;
+}
+
+/* Резкая остановка + выключение мотора
+ */
+void brakePlanner(PLANNER_StructDef* planner)
+{
+	planner->_workState = PLANNER_INIT;
+//	planner->stepTime = 0;
+//	planner->_curSpeed = 0;
+	planner->_n = 0;
+}
 
 /** Сбросить счётчики всех моторов в 0
  *
@@ -406,7 +364,7 @@ param_change_t setCurrentAxes(PLANNER_StructDef* planner, int32_t pos[])
 {
 	for(uint8_t i = 0; i < AXES; i ++)
 	{
-		if(setCurrentPos(planner->driver[i], pos[i]) != PARAM_CHANGE_OK);
+		if(setDriverCurrentPos(planner->driver[i], pos[i]) != PARAM_CHANGE_OK);
 		return PARAM_CHANGE_ERR;
 	}
 
@@ -417,7 +375,7 @@ param_change_t setCurrentAxes(PLANNER_StructDef* planner, int32_t pos[])
  */
 param_change_t setCurrentPosAxis(PLANNER_StructDef* planner, uint8_t axis, int32_t pos)
 {
-	return setCurrentPos(planner->driver[axis], pos);
+	return setDriverCurrentPos(planner->driver[axis], pos);
 }
 
 /* ---------------------------------------------------- РАЗРАБОТКА ----------------------------------------------------- */
@@ -427,7 +385,7 @@ param_change_t setCurrentPosAxis(PLANNER_StructDef* planner, uint8_t axis, int32
  */
 int32_t getCurrentPosAxis(PLANNER_StructDef* planner, uint8_t axis)
 {
-	return getCurrentPos(planner->driver[axis]);
+	return getDriverCurrentPos(planner->driver[axis]);
 }
 
 /** Установить цель в шагах и начать движение

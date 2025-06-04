@@ -1,12 +1,3 @@
-/**
-  ******************************************************************************
-  * @file    	stepper.с
-  * @author  	PromisLab
-  * @brief   	Этот файл описывает реализацию функций работы с шаговым мотором
-  *
-  ******************************************************************************
-  */
-
 #include "stepper.h"
 #include "dwt.h"			//< Библиотека таймера DWT для задержки между фронтами сигнала для пина STEP
 
@@ -22,8 +13,6 @@ void stepperFunctionsInit(writePinFunction_void_ptr function)
 }
 
 /** Функция инициализации шагового мотора
- * 	на вход передается указатель на экземпляр структуры STEPPER_StructDef
- * 	и указатель на экземпляр структуры STEPPER_PINS_StructDef
  *
  * 	Функция определяет пины шагового мотора и инициализирует начальные данные мотора -
  * 	позицию, направление, статус включения, глобальное определение поведения пинов DIR, EN
@@ -47,12 +36,12 @@ void stepperInit(STEPPER_StructDef* stepper, STEPPER_PINS_StructDef* pins)
 	stepper->_globDir = false;
 }
 
-/** Сделать шаг мотором
+/** Функция выполнения шага мотором
  */
 void step(STEPPER_StructDef* stepper)
 {
 	stepper->pos += stepper->dir;
-	setDir(stepper, stepper->dir); /* Установить пин DIR в нужное состояние в соответствии с направлением вращения */
+	setDir(stepper, stepper->dir);
 
 	setPin(stepper->stepper_pins.GPIOx_step, stepper->stepper_pins.GPIO_Pin_step, PIN_SET);
 	DWT_usDelay(STEP_TIME);
@@ -64,10 +53,9 @@ void step(STEPPER_StructDef* stepper)
  * 	PIN_RESET -> dir = -1,
  * 	если _globDir = true, то GPIO_PIN_SET -> dir = -1,
  * 	PIN_RESET -> dir = 1,
- * 	dir = 1 - по часовой стрелки независимо от _globDir
- * 	dir = -1 - против часовой стрелки независимо от _globDir
+ * 	dir = 1 - движение мотора по часовой стрелки
+ * 	dir = -1 - движение моторапротив часовой стрелки
  * 	Направление вращения определяется со стороны задней части мотора,
- * 	т.е. вал мотора смотрит от нас!
  */
 void setDir(STEPPER_StructDef* stepper, int8_t dir)
 {
@@ -140,10 +128,9 @@ void invertPinEn(STEPPER_StructDef* stepper)
  * 	PIN_RESET -> dir = -1,
  * 	если _globDir = true, то GPIO_PIN_SET -> dir = -1,
  * 	PIN_RESET -> dir = 1,
- * 	dir = 1 - по часовой стрелки независимо от _globDir
- * 	dir = -1 - против часовой стрелки независимо от _globDir
+ * 	dir = 1 - движение мотора по часовой стрелки
+ * 	dir = -1 - движение моторапротив часовой стрелки
  * 	Направление вращения определяется со стороны задней части мотора,
- * 	т.е. вал мотора смотрит от нас!
  */
 void invertPinDir(STEPPER_StructDef* stepper)
 {

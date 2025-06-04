@@ -1,14 +1,3 @@
-/**
-  ******************************************************************************
-  * @Файл    	fifo.с
-  * @Автор  	PromisLab
-  * @Описание	Этот файл описывает реализацию функций FIFO буфера, который
-  * 			использует указатель на статически выделенную область памяти
-  *
-  ******************************************************************************
-  *
-  */
-
 #include "fifo_char.h"
 
 #include <string.h>
@@ -21,6 +10,9 @@ fifo_state_t fifoInitChar(FIFO_CHAR_StructDef* buf, char** data, uint32_t size)
 {
 	buf->size = size;
 	buf->data = data;
+
+	buf->tail = 0;
+	buf->head = 1;
 
 	if (buf->data == NULL) return FIFO_ERR;
 
@@ -36,8 +28,8 @@ fifo_state_t fifoClearChar(FIFO_CHAR_StructDef* buf)
 		buf->data[i] = 0;
 	}*/
 
-	buf->head = 1;
 	buf->tail = 0;
+	buf->head = 1;
 
 	return FIFO_CLEARED;
 }

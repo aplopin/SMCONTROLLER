@@ -1,8 +1,8 @@
 ../Core/Src/fifo.c:18:14:fifoInit	24	static
-../Core/Src/fifo.c:30:14:fifoClear	24	static
-../Core/Src/fifo.c:45:10:cellsForRead	16	static
-../Core/Src/fifo.c:53:14:availableForRead	16	static
-../Core/Src/fifo.c:61:10:cellsForWrite	24	static
-../Core/Src/fifo.c:68:14:availableForWrite	16	static
-../Core/Src/fifo.c:76:14:fifoWrite	16	static
-../Core/Src/fifo.c:90:14:fifoRead	16	static
+../Core/Src/fifo.c:33:14:fifoClear	24	static
+../Core/Src/fifo.c:48:10:cellsForRead	16	static
+../Core/Src/fifo.c:56:14:availableForRead	16	static
+../Core/Src/fifo.c:64:10:cellsForWrite	24	static
+../Core/Src/fifo.c:71:14:availableForWrite	16	static
+../Core/Src/fifo.c:79:14:fifoWrite	16	static
+../Core/Src/fifo.c:93:14:fifoRead	16	static

@@ -6,26 +6,26 @@
 /* ------------ Глобальные координаты станка (шаги) ------------- */
 
 /* Координаты линейных осей станка */
-int64_t x = 0;
-int64_t y = 0;
-int64_t z = 0;
+volatile int64_t x = 0;
+volatile int64_t y = 0;
+volatile int64_t z = 0;
 
 /* Координаты поворотных осей станка */
-int64_t a = 0;
-int64_t b = 0;
-int64_t c = 0;
+volatile int64_t a = 0;
+volatile int64_t b = 0;
+volatile int64_t c = 0;
 
 /* ------------ Глобальные координаты станка (мм) ------------- */
 
 /* Координаты линейных осей станка */
-double X = 0;
-double Y = 0;
-double Z = 0;
+volatile double X = 0;
+volatile double Y = 0;
+volatile double Z = 0;
 
 /* Координаты поворотных осей станка */
-double A = 0;
-double B = 0;
-double C = 0;
+volatile double A = 0;
+volatile double B = 0;
+volatile double C = 0;
 
 /* Буфер шагов интерполятора */
 int8_t bufSteps[FIFO_STEPS_SIZE];
@@ -139,14 +139,14 @@ handler_interpolator_state_t handlerLine(INTERPOLATOR_StructDef* interpolator, F
 				line->x_rel += line->dx * MM_PER_STEP;
 				x += line->dx;
 
-				fifoWrite(buf, setBinarySteps(axis1, line->dx));
+				fifoWrite(buf, setStepsBin(axis1, line->dx));
 			}
 			else
 			{
 				line->y_rel += line->dy * MM_PER_STEP;
 				y += line->dy;
 
-				fifoWrite(buf, setBinarySteps(axis2, line->dy));
+				fifoWrite(buf, setStepsBin(axis2, line->dy));
 			}
 		}
 		else
@@ -156,18 +156,16 @@ handler_interpolator_state_t handlerLine(INTERPOLATOR_StructDef* interpolator, F
 				line->x_rel += line->dx * MM_PER_STEP;
 				x += line->dx;
 
-				fifoWrite(buf, setBinarySteps(axis1, line->dx));
+				fifoWrite(buf, setStepsBin(axis1, line->dx));
 			}
 		        else
 		        {
 		            line->y_rel += line->dy * MM_PER_STEP;
 		            y += line->dy;
 
-		            fifoWrite(buf, setBinarySteps(axis2, line->dy));
+		            fifoWrite(buf, setStepsBin(axis2, line->dy));
 		        }
 		}
-
-//		printf("G01 X%.6f Y%.6f\n", x * MM_PER_STEP, y * MM_PER_STEP);
 
 		/* Пересчет оценочной функции */
 		line->F = line->dX * line->y_rel - line->dY * line->x_rel;
@@ -204,14 +202,14 @@ handler_interpolator_state_t handlerArc(INTERPOLATOR_StructDef* interpolator, FI
 				arc->y_rel += arc->dy * MM_PER_STEP;
 				y += arc->dy;
 
-				fifoWrite(buf, setBinarySteps(axis2, arc->dy));
+				fifoWrite(buf, setStepsBin(axis2, arc->dy));
 			}
 			else
 			{
 				arc->x_rel += arc->dx * MM_PER_STEP;
 				x += arc->dx;
 
-				fifoWrite(buf, setBinarySteps(axis1, arc->dx));
+				fifoWrite(buf, setStepsBin(axis1, arc->dx));
 			}
 		}
 		else
@@ -221,7 +219,7 @@ handler_interpolator_state_t handlerArc(INTERPOLATOR_StructDef* interpolator, FI
 				arc->x_rel += arc->dx * MM_PER_STEP;
 				x += arc->dx;
 
-				fifoWrite(buf, setBinarySteps(axis1, arc->dx));
+				fifoWrite(buf, setStepsBin(axis1, arc->dx));
 
 			}
 			else
@@ -229,11 +227,9 @@ handler_interpolator_state_t handlerArc(INTERPOLATOR_StructDef* interpolator, FI
 				arc->y_rel += arc->dy * MM_PER_STEP;
 				y += arc->dy;
 
-				fifoWrite(buf, setBinarySteps(axis2, arc->dy));
+				fifoWrite(buf, setStepsBin(axis2, arc->dy));
 			}
 		}
-
-//		printf("G01 X%.6f Y%.6f\n", x * MM_PER_STEP, y * MM_PER_STEP);
 
 		/* Пересчет оценочной функции */
 		arc->F = arc->x_rel * arc->x_rel + arc->y_rel * arc->y_rel - arc->R2;
@@ -268,7 +264,7 @@ handler_interpolator_state_t handlerArc(INTERPOLATOR_StructDef* interpolator, FI
 /** Функция формирования двоичного представления шагов по осям
   * step - шаг по оси, может быть 1 или -1
   */
-uint8_t setBinarySteps(uint8_t axis, int8_t step)
+uint8_t setStepsBin(uint8_t axis, int8_t step)
 {
     int8_t bin = 0b00000000;
 

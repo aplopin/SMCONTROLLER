@@ -20,6 +20,9 @@ fifo_state_t fifoInit(FIFO_StructDef* buf, int8_t* data, uint32_t size)
 	buf->size = size;
 	buf->data = data;
 
+	buf->tail = 0;
+	buf->head = 1;
+
 	if (buf->data == NULL) return FIFO_ERR;
 
 	return FIFO_INIT;
@@ -34,8 +37,8 @@ fifo_state_t fifoClear(FIFO_StructDef* buf)
 		buf->data[i] = 0;
 	}
 
-	buf->head = 1;
 	buf->tail = 0;
+	buf->head = 1;
 
 	return FIFO_CLEARED;
 }
