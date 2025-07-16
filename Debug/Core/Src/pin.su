@@ -1,0 +1,2 @@
+../Core/Src/pin.c:9:6:pinFunctionsInit	16	static
+../Core/Src/pin.c:16:6:setPin	16	static

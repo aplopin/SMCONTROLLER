@@ -7,12 +7,61 @@
 #include "laser.h"
 #include "main.h"
 
-extern SPI_HandleTypeDef hspi3;
-
 #define SPI_TXBUF_SIZE 10
 
-uint8_t spi_txbuf[SPI_TXBUF_SIZE]; // буфер передачи по SPI
+extern SPI_HandleTypeDef hspi3;
 
+/** Функция инициализации лазера
+ */
+void laserInit(LASER_StructDef* laser, LASER_PINS_StructDef* pins)
+{
+	laser->laser_pins->GPIOx_gate = pins->GPIOx_gate;
+	laser->laser_pins->GPIO_Pin_gate = pins->GPIO_Pin_gate;
+
+	laser->en = OFF;
+
+	laser->_globEn = false;
+}
+
+/** Включение лазера
+ */
+void enableLaser(LASER_StructDef* laser)
+{
+	laser->en = ON;
+
+	if(laser->_globEn == false)
+	{
+		setPin(laser->laser_pins->GPIOx_gate, laser->laser_pins->GPIO_Pin_gate, PIN_SET);
+	}
+	else setPin(laser->laser_pins->GPIOx_gate, laser->laser_pins->GPIO_Pin_gate, PIN_RESET);
+}
+
+/** Отключение лазера
+ */
+void disableLaser(LASER_StructDef* laser)
+{
+	laser->en = OFF;
+
+	if(laser->_globEn == false)
+	{
+		setPin(laser->laser_pins->GPIOx_gate, laser->laser_pins->GPIO_Pin_gate, PIN_RESET);
+	}
+	else setPin(laser->laser_pins->GPIOx_gate, laser->laser_pins->GPIO_Pin_gate, PIN_SET);
+}
+
+/** Инвертировать поведение пина EN
+ * 	_globEn определяет поведение пина EN
+ * 	если _globEn = false, то PIN_SET -> en = ON,
+ * 	PIN_RESET -> en = OFF,
+ * 	если _globEn = true, то PIN_SET -> en = OFF,
+ * 	PIN_RESET -> en = ON,
+ */
+void invertLaserPinEn(LASER_StructDef* laser)
+{
+	laser->_globEn = !laser->_globEn;
+}
+
+uint8_t spi_txbuf[SPI_TXBUF_SIZE]; // буфер передачи по SPI
 
 // Дополнительные функции
 // функция передачи по SPI пакета данных

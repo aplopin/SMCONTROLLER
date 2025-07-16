@@ -8,13 +8,13 @@
 
 #include "stepper.h"
 
-#define _sign(x) 				((x) >= 0 ? 1 : -1)  					//< Знак числа целого
-#define _signf(x) 				((x) > 1e-12 ? 1 : -1)  				//< Знак числа с плавающей точкой
+#define _sign(x) 						((x) >= 0 ? 1 : -1)  					//< Знак числа целого
+#define _signf(x) 						((x) > -1e-12 ? 1 : -1)  				//< Знак числа с плавающей точкой
 
-#define MIN_SPEED_POS_MODE 		5  										//< Минимальная скорость для движения в POSITION_MODE с ускорением в шаг/с
-#define MAX_PERIOD_POS_MODE 	(1000000L / MIN_SPEED_POS_MODE)
-#define MIN_STEP_SPEED 			(1.0 / 3600)  							//< Ограничение минимальной скорости в 1 шаг/ч
-#define COEF_AST				5										//< Шаг ШВП в мм
+#define MAX_SPEED_DRIVER				35000 									//< Программное ограничение максимальной скорости драйвера (шаги/c) -> ~28.6 мкс
+#define MAX_ACCEL_DRIVER				(MAX_SPEED_DRIVER / 2)					//< Максимальное ускорение драйвера (шаги/c^2)
+#define MIN_SPEED_DRIVER				(1 / 60.0)  							//< Программное ограничение минимальной скорости драйвера (шаги/c)
+#define COEF_AST						5										//< Шаг ШВП (мм)
 
 /** Тип данных - тип концевых переключателей
  * 	ABSENT - концевой переключатель отсутствует
@@ -31,11 +31,10 @@ typedef enum
 
 /* Тип данных - состояние работы драйвера
  * DRIVER_ERR - драйвер в ошибке
- * DRIVER_OK - драйвер в состоянии без ошибки
+ * DRIVER_OK - драйвер в нормальном состоянии
  * DRIVER_INIT - драйвер инициализирован
  * DRIVER_READY - драйвер готов к работе, мотор не двигается
  * DRIVER_RUN - драйвер в работе, мотор двигается
- * DRIVER_BRAKE - драйвера был остановлен и сброшен
  */
 typedef enum
 {
@@ -48,17 +47,17 @@ typedef enum
 } driver_state_t;
 
 /** Тип данных - статус изменения параметров драйвера шагового мотора
- * 	PARAM_CHANGE_ERR - параметры не изменены, ошибка
- * 	PARAM_CHANGE_OK - параметры изменены, обишок нет
+ * 	DRIVER_PARAM_CHANGE_ERR - параметры не изменены, ошибка
+ * 	DRIVER_PARAM_CHANGE_OK - параметры изменены без ошибок
  */
 typedef enum
 {
-	PARAM_CHANGE_ERR = -1,
-	PARAM_CHANGE_OK = 0
+	DRIVER_PARAM_CHANGE_ERR = -1,
+	DRIVER_PARAM_CHANGE_OK = 0
 
-} param_change_t;
+} driver_param_change_t;
 
-/** Типы движений шаговых моторов
+/** Типы движения шаговых моторов
  * 	LINEAR - линейное движение
  * 	ROTATIONAL - круговое движение
  */
@@ -80,10 +79,10 @@ typedef enum
 
 } run_mode_t;
 
-/* Определение структуры пинов концевых переключателей и датчика нуля драйвера шагового мотора
- * концевик отрицательного направления - NEG_LIMIT_SWITCH
- * нулевик - ZERO_SENSOR
- * концевик положительного направления - POS_LIMIT_SWITCH
+/** Определение структуры пинов концевых переключателей и датчика нуля драйвера шагового мотора
+ *  концевик отрицательного направления - NEG_LIMIT_SWITCH
+ * 	нулевик - ZERO_SENSOR
+ * 	концевик положительного направления - POS_LIMIT_SWITCH
  */
 typedef struct
 {
@@ -107,21 +106,24 @@ typedef struct
 /* Структура драйвера шагового мотора */
 typedef struct
 {
-	/* Структура шагового мотора */
+	/* Указатель на структура шагового мотора */
 	STEPPER_StructDef* stepper;
 
-	/* Структура пинов концевых переключателей и датчика нуля драйвера шагового мотора */
+	/* Указатель на структура пинов концевых переключателей и датчика нуля драйвера шагового мотора */
 	DRIVER_LIMIT_SWITCH_PINS_StructDef* driver_pins;
+
+	/* Название оси драйвера */
+	volatile char _axisName;
 
 	/* ------------- Общие переменные движения ----------- */
 
-	/* Текущее время драйвера с момента начала движения */
+	/* Текущее время драйвера с момента начала движения (мкс) */
 	uint32_t tickUs;
 
-	/* Время предыдущего вхождения в главную функцию драйвера мотора tickDriver */
+	/* Время предыдущего вхождения в главную функцию драйвера мотора tickDriver (мкс) */
 	uint32_t prevTime;
 
-	/* Время между шагами при постоянной скорости мотора */
+	/* Время между шагами при постоянной скорости мотора (мкс) */
 	uint32_t stepTime;
 
 	/* Тип оси - линейная или круговая ось */
@@ -142,7 +144,7 @@ typedef struct
 	/* Количество шагов для поворота на 1 градус */
 	float _stepsPerDeg;
 
-	/* Шаг шарнирно-винтовой передачи (мм) 0 - для круговой оси */
+	/* Шаг шарнирно-винтовой передачи (мм), 0 - для круговой оси */
 	uint16_t _coefAST;
 
 	/* Количество шагов для сдвига на 1 мм */
@@ -153,19 +155,19 @@ typedef struct
 
 	/* ------------ Переменные POSITION_MODE ------------- */
 
-	/* Отсчет времени в планировщике скорости в режиме POSITION_MODE */
+	/* Отсчет времени в планировщике скорости в режиме POSITION_MODE (мкс) */
 	uint32_t _positionPlannerTime;
 
-	/* Максимальная скорость мотора для режима POSITION_MODE */
+	/* Максимальная скорость мотора для режима POSITION_MODE (шаги/c) */
 	volatile float _maxSpeed;
 
-	/* Целевая координата */
+	/* Целевая координата (шаги) */
 	volatile int32_t _targetPosition;
 
-	/* Количетсво шагов разгона */
+	/* Количество шагов разгона */
 	uint32_t _s1;
 
-	/* Количетсво шагов равномерного движения */
+	/* Количество шагов равномерного движения */
 	uint32_t _s2;
 
 	/* Количество шагов торможения */
@@ -176,13 +178,13 @@ typedef struct
 
 	/* ------------ Переменные VELOCITY_MODE ------------- */
 
-	/* Отсчет времени в планировщике скорости в режиме VELOCITY_MODE */
+	/* Отсчет времени в планировщике скорости в режиме VELOCITY_MODE (мкс)*/
 	uint32_t _speedPlannerTime;
 
-	/* Текущая скорость мотора */
+	/* Текущая скорость мотора (шаги/c) */
 	float _curSpeed;
 
-	/* Скорость мотора для режима VELOCITY_MODE */
+	/* Скорость мотора для режима VELOCITY_MODE (шаги/c) */
 	volatile float _targetSpeed;
 
 	/* Стоп - флаг */
@@ -190,16 +192,16 @@ typedef struct
 
 	/* ------ Переменные алгоритма плавного разгона ------ */
 
-	/* Начальное время планировщика в мкс */
+	/* Начальное время планировщика (мкс) */
 	float _c0;
 
-	/* n-тое время планировщика в мкс */
+	/* n-тое время планировщика (мкс) */
 	float _cn;
 
 	/* Счетчик шагов планировщика скорости */
 	int32_t _n;
 
-	/* Количество шагов до целевой  скорости */
+	/* Количество шагов до целевой скорости */
 	uint32_t N;
 
 	/* Минимальное время планировщика скорости, вычисляется из максимальной скорости */
@@ -207,7 +209,7 @@ typedef struct
 
 } DRIVER_StructDef;
 
-/* Определение uint32_t указателя на функию без параметров */
+/* Определение uint32_t указателя на функцию без параметров */
 typedef uint32_t (*timeFunction_uint32_t_ptr)(void);
 
 /* Определение void указателя на функию без параметров */
@@ -216,7 +218,7 @@ typedef void (*timeFunction_void_ptr)(void);
 /* --------------------------------------- Инициализация --------------------------------------- */
 
 void driverFunctionsInit(timeFunction_void_ptr function1, timeFunction_void_ptr function2, timeFunction_uint32_t_ptr function3, timeFunction_void_ptr function4);
-void driverInit(DRIVER_StructDef* driver, STEPPER_StructDef* stepper, DRIVER_LIMIT_SWITCH_PINS_StructDef* pins, uint16_t stepsPerRev, movement_type_t type);
+void driverInit(DRIVER_StructDef* driver, STEPPER_StructDef* stepper, DRIVER_LIMIT_SWITCH_PINS_StructDef* pins, uint16_t stepsPerRev, movement_type_t type, char axisName);
 void setDriverAutoPowerMode(DRIVER_StructDef* driver, bool mode);
 void setDriverRunMode(DRIVER_StructDef* driver, run_mode_t mode);
 void resetDriverTimers(DRIVER_StructDef* driver);
@@ -243,25 +245,25 @@ driver_state_t getDriverStatus(DRIVER_StructDef* driver);
 
 void plannerPositionMode(DRIVER_StructDef* driver);
 
-param_change_t setDriverTargetPos(DRIVER_StructDef* driver, int32_t target_pos);
-param_change_t setDriverTargetPosDeg(DRIVER_StructDef* driver, float target_pos_deg);
-param_change_t setDriverTargetPosMm(DRIVER_StructDef* driver, float target_pos_mm);
+driver_param_change_t setDriverTargetPos(DRIVER_StructDef* driver, int32_t target_pos);
+driver_param_change_t setDriverTargetPosDeg(DRIVER_StructDef* driver, float target_pos_deg);
+driver_param_change_t setDriverTargetPosMm(DRIVER_StructDef* driver, float target_pos_mm);
 
 int32_t getDriverTargetPos(DRIVER_StructDef* driver);
 float getDriverTargetPosDeg(DRIVER_StructDef* driver);
 float getDriverTargetPosMm(DRIVER_StructDef* driver);
 
-param_change_t setDriverMaxSpeed(DRIVER_StructDef* driver, float speed);
-param_change_t setDriverMaxSpeedDeg(DRIVER_StructDef* driver, float speed);
-param_change_t setDriverMaxSpeedMm(DRIVER_StructDef* driver, float speed);
+driver_param_change_t setDriverMaxSpeed(DRIVER_StructDef* driver, float speed);
+driver_param_change_t setDriverMaxSpeedDeg(DRIVER_StructDef* driver, float speed);
+driver_param_change_t setDriverMaxSpeedMm(DRIVER_StructDef* driver, float speed);
 
-param_change_t setDriverAcceleration(DRIVER_StructDef* driver, int16_t accel);
-param_change_t setDriverAccelerationDeg(DRIVER_StructDef* driver, float accel);
-param_change_t setDriverAccelerationMm(DRIVER_StructDef* driver, float accel);
+driver_param_change_t setDriverAcceleration(DRIVER_StructDef* driver, int16_t accel);
+driver_param_change_t setDriverAccelerationDeg(DRIVER_StructDef* driver, float accel);
+driver_param_change_t setDriverAccelerationMm(DRIVER_StructDef* driver, float accel);
 
-param_change_t setDriverCurrentPos(DRIVER_StructDef* driver, int32_t pos);
-param_change_t setDriverCurrentPosDeg(DRIVER_StructDef* driver, float pos);
-param_change_t setDriverCurrentPosMm(DRIVER_StructDef* driver, float pos);
+driver_param_change_t setDriverCurrentPos(DRIVER_StructDef* driver, int32_t pos);
+driver_param_change_t setDriverCurrentPosDeg(DRIVER_StructDef* driver, float pos);
+driver_param_change_t setDriverCurrentPosMm(DRIVER_StructDef* driver, float pos);
 
 int32_t getDriverCurrentPos(DRIVER_StructDef* driver);
 float getDriverCurrentPosDeg(DRIVER_StructDef* driver);
@@ -273,9 +275,9 @@ float getDriverCurrentPosMm(DRIVER_StructDef* driver);
 
 void plannerVelocityMode(DRIVER_StructDef* driver);
 
-param_change_t setDriverTargetSpeed(DRIVER_StructDef* driver, float speed);
-param_change_t setDriverTargetSpeedDeg(DRIVER_StructDef* driver, float speed);
-param_change_t setDriverTargetSpeedMm(DRIVER_StructDef* driver, float speed);
+driver_param_change_t setDriverTargetSpeed(DRIVER_StructDef* driver, float speed);
+driver_param_change_t setDriverTargetSpeedDeg(DRIVER_StructDef* driver, float speed);
+driver_param_change_t setDriverTargetSpeedMm(DRIVER_StructDef* driver, float speed);
 
 float getDriverTargetSpeed(DRIVER_StructDef* driver);
 float getDriverTargetSpeedDeg(DRIVER_StructDef* driver);

@@ -1,8 +1,7 @@
-../Core/Src/stepper.c:10:6:stepperFunctionsInit	1
-../Core/Src/stepper.c:20:6:stepperInit	1
-../Core/Src/stepper.c:41:6:step	1
-../Core/Src/stepper.c:60:6:setDir	4
-../Core/Src/stepper.c:89:6:enableStepper	2
-../Core/Src/stepper.c:102:6:disableStepper	2
-../Core/Src/stepper.c:120:6:invertPinEn	1
-../Core/Src/stepper.c:135:6:invertPinDir	1
+../Core/Src/stepper.c:9:6:stepperInit	1
+../Core/Src/stepper.c:30:6:step	1
+../Core/Src/stepper.c:49:6:setStepperDir	4
+../Core/Src/stepper.c:78:6:enableStepper	2
+../Core/Src/stepper.c:91:6:disableStepper	2
+../Core/Src/stepper.c:109:6:invertStepperPinEn	1
+../Core/Src/stepper.c:124:6:invertStepperPinDir	1

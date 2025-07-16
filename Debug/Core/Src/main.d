@@ -71,15 +71,15 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
  ../Middlewares/Third_Party/LwIP/src/include/netif/ethernet.h \
  ../Middlewares/Third_Party/LwIP/src/include/lwip/dhcp.h \
  ../Middlewares/Third_Party/LwIP/src/include/lwip/timeouts.h \
- ../LWIP/Target/ethernetif.h ../Core/Inc/dwt.h ../Core/Inc/fifo.h \
- ../Core/Inc/fifo_char.h ../Core/Inc/fifo.h ../Core/Inc/net.h \
- ../Middlewares/Third_Party/LwIP/src/include/lwip/udp.h \
+ ../LWIP/Target/ethernetif.h ../Core/Inc/libs.h ../Core/Inc/pin.h \
+ ../Core/Inc/dwt.h ../Core/Inc/fifo.h ../Core/Inc/fifo_char.h \
+ ../Core/Inc/net.h ../Middlewares/Third_Party/LwIP/src/include/lwip/udp.h \
  ../Middlewares/Third_Party/LwIP/src/include/lwip/ip.h \
  ../Middlewares/Third_Party/LwIP/src/include/lwip/ip6.h \
  ../Middlewares/Third_Party/LwIP/src/include/lwip/prot/ip.h \
  ../Middlewares/Third_Party/LwIP/src/include/lwip/prot/udp.h \
  ../Core/Inc/planner.h ../Core/Inc/driver.h ../Core/Inc/stepper.h \
- ../Core/Inc/gcode.h ../Core/Inc/interpolator.h
+ ../Core/Inc/laser.h ../Core/Inc/gcode.h ../Core/Inc/interpolator.h
 ../Core/Inc/main.h:
 ../Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h:
 ../Core/Inc/stm32f4xx_hal_conf.h:
@@ -154,10 +154,11 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Middlewares/Third_Party/LwIP/src/include/lwip/dhcp.h:
 ../Middlewares/Third_Party/LwIP/src/include/lwip/timeouts.h:
 ../LWIP/Target/ethernetif.h:
+../Core/Inc/libs.h:
+../Core/Inc/pin.h:
 ../Core/Inc/dwt.h:
 ../Core/Inc/fifo.h:
 ../Core/Inc/fifo_char.h:
-../Core/Inc/fifo.h:
 ../Core/Inc/net.h:
 ../Middlewares/Third_Party/LwIP/src/include/lwip/udp.h:
 ../Middlewares/Third_Party/LwIP/src/include/lwip/ip.h:
@@ -167,5 +168,6 @@ Core/Src/main.o: ../Core/Src/main.c ../Core/Inc/main.h \
 ../Core/Inc/planner.h:
 ../Core/Inc/driver.h:
 ../Core/Inc/stepper.h:
+../Core/Inc/laser.h:
 ../Core/Inc/gcode.h:
 ../Core/Inc/interpolator.h:

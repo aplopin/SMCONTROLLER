@@ -1,17 +1,6 @@
 #include "stepper.h"
 #include "dwt.h"			//< Библиотека таймера DWT для задержки между фронтами сигнала для пина STEP
 
-/* Указатель на функцию для изменения состояния пина */
-static writePinFunction_void_ptr setPin;
-
-/**	Функция инициализации указателей на функции из других областей программы
- * 	для использования в данной библиотеке
- */
-void stepperFunctionsInit(writePinFunction_void_ptr function)
-{
-	setPin = function;
-}
-
 /** Функция инициализации шагового мотора
  *
  * 	Функция определяет пины шагового мотора и инициализирует начальные данные мотора -
@@ -19,14 +8,14 @@ void stepperFunctionsInit(writePinFunction_void_ptr function)
  */
 void stepperInit(STEPPER_StructDef* stepper, STEPPER_PINS_StructDef* pins)
 {
-	stepper->stepper_pins.GPIOx_step = pins->GPIOx_step;
-	stepper->stepper_pins.GPIO_Pin_step = pins->GPIO_Pin_step;
+	stepper->stepper_pins->GPIOx_step = pins->GPIOx_step;
+	stepper->stepper_pins->GPIO_Pin_step = pins->GPIO_Pin_step;
 
-	stepper->stepper_pins.GPIOx_dir = pins->GPIOx_dir;
-	stepper->stepper_pins.GPIO_Pin_dir = pins->GPIO_Pin_dir;
+	stepper->stepper_pins->GPIOx_dir = pins->GPIOx_dir;
+	stepper->stepper_pins->GPIO_Pin_dir = pins->GPIO_Pin_dir;
 
-	stepper->stepper_pins.GPIOx_en = 0x0;
-	stepper->stepper_pins.GPIO_Pin_en = 0x0;
+	stepper->stepper_pins->GPIOx_en = pins->GPIOx_en;
+	stepper->stepper_pins->GPIO_Pin_en = pins->GPIO_Pin_en;
 
 	stepper->pos = 0;
 	stepper->dir = 1;
@@ -41,11 +30,11 @@ void stepperInit(STEPPER_StructDef* stepper, STEPPER_PINS_StructDef* pins)
 void step(STEPPER_StructDef* stepper)
 {
 	stepper->pos += stepper->dir;
-	setDir(stepper, stepper->dir);
+	setStepperDir(stepper, stepper->dir);
 
-	setPin(stepper->stepper_pins.GPIOx_step, stepper->stepper_pins.GPIO_Pin_step, PIN_SET);
-	DWT_usDelay(STEP_TIME);
-	setPin(stepper->stepper_pins.GPIOx_step, stepper->stepper_pins.GPIO_Pin_step, PIN_RESET);
+	setPin(stepper->stepper_pins->GPIOx_step, stepper->stepper_pins->GPIO_Pin_step, PIN_SET);
+	DWT_usDelay(STEPPER_STEP_TIME);
+	setPin(stepper->stepper_pins->GPIOx_step, stepper->stepper_pins->GPIO_Pin_step, PIN_RESET);
 }
 
 /** Задать направление вращения мотора в соответствии с величиной _globDir
@@ -57,30 +46,30 @@ void step(STEPPER_StructDef* stepper)
  * 	dir = -1 - движение моторапротив часовой стрелки
  * 	Направление вращения определяется со стороны задней части мотора,
  */
-void setDir(STEPPER_StructDef* stepper, int8_t dir)
+void setStepperDir(STEPPER_StructDef* stepper, int8_t dir)
 {
 	if(stepper->_globDir == false)
 	{
 		if(dir == 1)
 		{
 			stepper->dir = 1;
-			setPin(stepper->stepper_pins.GPIOx_dir, stepper->stepper_pins.GPIO_Pin_dir, PIN_SET);
+			setPin(stepper->stepper_pins->GPIOx_dir, stepper->stepper_pins->GPIO_Pin_dir, PIN_SET);
 		}
 		else
 		{
 			stepper->dir = -1;
-			setPin(stepper->stepper_pins.GPIOx_dir, stepper->stepper_pins.GPIO_Pin_dir, PIN_RESET);
+			setPin(stepper->stepper_pins->GPIOx_dir, stepper->stepper_pins->GPIO_Pin_dir, PIN_RESET);
 		}
 	}
 	else if(dir == 1)
 	{
 		stepper->dir = 1;
-		setPin(stepper->stepper_pins.GPIOx_dir, stepper->stepper_pins.GPIO_Pin_dir, PIN_RESET);
+		setPin(stepper->stepper_pins->GPIOx_dir, stepper->stepper_pins->GPIO_Pin_dir, PIN_RESET);
 	}
 		else
 		{
 			stepper->dir = -1;
-			setPin(stepper->stepper_pins.GPIOx_dir, stepper->stepper_pins.GPIO_Pin_dir, PIN_SET);
+			setPin(stepper->stepper_pins->GPIOx_dir, stepper->stepper_pins->GPIO_Pin_dir, PIN_SET);
 		}
 }
 
@@ -92,9 +81,9 @@ void enableStepper(STEPPER_StructDef* stepper)
 
 	if(stepper->_globEn == false)
 	{
-		setPin(stepper->stepper_pins.GPIOx_en, stepper->stepper_pins.GPIO_Pin_en, PIN_SET);
+		setPin(stepper->stepper_pins->GPIOx_en, stepper->stepper_pins->GPIO_Pin_en, PIN_SET);
 	}
-	else setPin(stepper->stepper_pins.GPIOx_en, stepper->stepper_pins.GPIO_Pin_en, PIN_RESET);
+	else setPin(stepper->stepper_pins->GPIOx_en, stepper->stepper_pins->GPIO_Pin_en, PIN_RESET);
 }
 
 /** Выключение мотора
@@ -105,9 +94,9 @@ void disableStepper(STEPPER_StructDef* stepper)
 
 	if(stepper->_globEn == false)
 	{
-		setPin(stepper->stepper_pins.GPIOx_en, stepper->stepper_pins.GPIO_Pin_en, PIN_RESET);
+		setPin(stepper->stepper_pins->GPIOx_en, stepper->stepper_pins->GPIO_Pin_en, PIN_RESET);
 	}
-	else setPin(stepper->stepper_pins.GPIOx_en, stepper->stepper_pins.GPIO_Pin_en, PIN_SET);
+	else setPin(stepper->stepper_pins->GPIOx_en, stepper->stepper_pins->GPIO_Pin_en, PIN_SET);
 }
 
 /** Инвертировать поведение пина EN
@@ -117,7 +106,7 @@ void disableStepper(STEPPER_StructDef* stepper)
  * 	если _globEn = true, то PIN_SET -> en = OFF,
  * 	PIN_RESET -> en = ON,
  */
-void invertPinEn(STEPPER_StructDef* stepper)
+void invertStepperPinEn(STEPPER_StructDef* stepper)
 {
 	stepper->_globEn = !stepper->_globEn;
 }
@@ -132,7 +121,7 @@ void invertPinEn(STEPPER_StructDef* stepper)
  * 	dir = -1 - движение моторапротив часовой стрелки
  * 	Направление вращения определяется со стороны задней части мотора,
  */
-void invertPinDir(STEPPER_StructDef* stepper)
+void invertStepperPinDir(STEPPER_StructDef* stepper)
 {
 	stepper->_globDir = !stepper->_globDir;
 }

@@ -19,7 +19,37 @@ extern "C" {
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "pin.h"
+
 #define SPI_TXBUF_SIZE 10
+
+typedef struct
+{
+	/* Порт и номер пина GATE включения лазера */
+	GPIO_StructDef_custom* GPIOx_gate;
+	uint16_t GPIO_Pin_gate;
+
+} LASER_PINS_StructDef;
+
+typedef struct
+{
+	/* Экземпляр структуры пинов */
+	LASER_PINS_StructDef* laser_pins;
+
+	/* Статус включения лазера */
+	volatile statusEn_t en;
+
+	/* Переменная - флаг для определения инвертированного состояния пина EN */
+	volatile bool _globEn;
+
+} LASER_StructDef;
+
+/* --------------------------------------- Прототипы функций библиотеки laser.h --------------------------------------- */
+
+void laserInit(LASER_StructDef* laser, LASER_PINS_StructDef* pins);
+void enableLaser(LASER_StructDef* laser);
+void disableLaser(LASER_StructDef* laser);
+void invertLaserPinEn(LASER_StructDef* laser);
 
 // Прототипы функций общения с контроллером лазером по SPI
 void spi_transmit_package(uint8_t *str);			// переслать пакет данных по SPI
@@ -37,6 +67,8 @@ void spi_set_current_time(uint8_t sec, uint8_t min, uint8_t hour, uint8_t date, 
 void spi_get_current_time(void); 						// получить текущее время - F3h
 void spi_send_emergency_message(uint8_t emergency_status); 	// аварийное сообщение контроллеру лазера - FFh
 void spi_get_last_logs(uint8_t logs); 					// получить последние n логов, кол-во ошибок, если n = 0, то только кол-во ошибок - 50h
+
+/* --------------------------------------- Прототипы функций библиотеки laser.h --------------------------------------- */
 
 #ifdef __cplusplus
 }

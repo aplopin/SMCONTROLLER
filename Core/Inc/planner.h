@@ -42,6 +42,17 @@ typedef enum
 
 } planner_phase_t;
 
+/** Тип данных - статус изменения параметров драйвера шагового мотора
+ * 	PLANNER_PARAM_CHANGE_ERR - параметры не изменены, ошибка
+ * 	PLANNER_PARAM_CHANGE_OK - параметры изменены, обишок нет
+ */
+typedef enum
+{
+	PLANNER_PARAM_CHANGE_ERR = -1,
+	PLANNER_PARAM_CHANGE_OK = 0
+
+} planner_param_change_t;
+
 /* Структура планировщика */
 typedef struct
 {
@@ -120,8 +131,6 @@ typedef struct
 	/* Счетчик шагов планировщика скорости в режиме POSITION_MODE */
 	uint32_t _k;
 
-
-
 	/* Период шагов */
 	uint32_t us;
 
@@ -176,8 +185,8 @@ void plannerSteps(PLANNER_StructDef* planner);
 void plannerVelocity(PLANNER_StructDef* planner);
 void plannerPhase(PLANNER_StructDef* planner);
 
-param_change_t setPlannerAcceleration(PLANNER_StructDef* planner, float accel);
-param_change_t setPlannerMaxSpeed(PLANNER_StructDef* planner, float speed);
+planner_param_change_t setPlannerAcceleration(PLANNER_StructDef* planner, float accel);
+planner_param_change_t setPlannerMaxSpeed(PLANNER_StructDef* planner, float speed);
 
 void brakePlanner(PLANNER_StructDef* planner);
 void pausePlanner(PLANNER_StructDef* planner);

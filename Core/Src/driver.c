@@ -2,21 +2,21 @@
 
 #include <math.h>
 
-/* Указатель на функцию запуска таймера реального времени (мкс)*/
+/* Указатель на функцию запуска таймера реального времени */
 static timeFunction_void_ptr startTimer;
 
-/* Указатель на функцию остановки таймера реального времени (мкс) */
+/* Указатель на функцию остановки таймера реального времени */
 static timeFunction_void_ptr stopTimer;
 
 /* Указатель на функцию для измерения времени */
 static timeFunction_uint32_t_ptr getDriverMicros;
 
-/* Указатель на функцию сброса счетчика таймера реального времени (мкс) */
+/* Указатель на функцию сброса счетчика таймера реального времени */
 static timeFunction_void_ptr resetDriverTimer;
 
 /* -------------------------------------------- Инициализация и параметры ---------------------------------------------- */
 
-/** Функция приема указателя на функцию получения времени в микросекундах.
+/** Функция определения указателей на функции времени контроллера.
  *  Используется таймер микроконтроллера и его регистр счетчика - TIMx->CNT
  *  function(1...n) ОБЯЗАТЕЛЬНО должны быть определены в файле main.c
  */
@@ -30,13 +30,11 @@ void driverFunctionsInit(timeFunction_void_ptr function1, timeFunction_void_ptr 
 
 /** Функция инициализации драйвера шагового мотора
  */
-void driverInit(DRIVER_StructDef* driver, STEPPER_StructDef* stepper, DRIVER_LIMIT_SWITCH_PINS_StructDef* pins, uint16_t stepsPerRev, movement_type_t type)
+void driverInit(DRIVER_StructDef* driver, STEPPER_StructDef* stepper, DRIVER_LIMIT_SWITCH_PINS_StructDef* pins, uint16_t stepsPerRev, movement_type_t type, char axisName)
 {
-	/* Структура шагового мотора */
 	driver->stepper = stepper;
-
-	/* Структура пинов концевых переключателей и датчика нуля драйвера шагового мотора */
 	driver->driver_pins = pins;
+	driver->_axisName = axisName;
 
 	/* ------------- Общие переменные движения ----------- */
 
@@ -102,6 +100,21 @@ void driverInit(DRIVER_StructDef* driver, STEPPER_StructDef* stepper, DRIVER_LIM
 void setDriverAxisType(DRIVER_StructDef* driver, movement_type_t type)
 {
 	driver->_axisType = type;
+
+	if(type == LINEAR)
+	{
+		driver->_coefAST = COEF_AST;
+		driver->_stepsPerMm = driver->_stepsPerRev / COEF_AST;
+
+		driver->_stepsPerDeg = 0;
+	}
+	else if(type == ROTATIONAL)
+	{
+		driver->_stepsPerDeg = driver->_stepsPerRev / 360.0;
+
+		driver->_coefAST = 0;
+		driver->_stepsPerMm = 0;
+	}
 }
 
 /** Режим автоотключения мотора при достижении позиции - true (по умолч. false)
@@ -125,7 +138,8 @@ void setDriverRunMode(DRIVER_StructDef* driver, run_mode_t mode)
 void setDriverStepsPerRev(DRIVER_StructDef* driver, uint16_t stepsPerRev)
 {
 	driver->_stepsPerRev = stepsPerRev;
-	driver->_stepsPerDeg = stepsPerRev / 360.0;
+
+	setDriverAxisType(driver, driver->_axisType);
 }
 
 /** Функция сброса всех таймеров
@@ -141,21 +155,21 @@ void resetDriverTimers(DRIVER_StructDef* driver)
  */
 void setDriverDir(DRIVER_StructDef* driver, uint8_t dir)
 {
-	setDir(driver->stepper, dir);
+	setStepperDir(driver->stepper, dir);
 }
 
 /** Инвертировать поведение пина DIR мотора - true (по умолч. false)
  */
 void invertDriverPinDir(DRIVER_StructDef* driver)
 {
-	invertPinDir(driver->stepper);
+	invertStepperPinDir(driver->stepper);
 }
 
 /** Инвертировать поведение EN пина - true (по умолч. false)
  */
 void invertDriverPinEn(DRIVER_StructDef* driver)
 {
-	invertPinEn(driver->stepper);
+	invertStepperPinEn(driver->stepper);
 }
 
 /** Включить мотор (пин EN)
@@ -322,7 +336,7 @@ void plannerPositionMode(DRIVER_StructDef* driver)
 				driver->_cn = driver->_cn * (1 - err * 2.0 / (4.0 * driver->_n + err));
 			}
 
-			driver->stepTime = (uint32_t)(driver->_cn) - STEP_TIME;
+			driver->stepTime = (uint32_t)(driver->_cn) - STEPPER_STEP_TIME;
 			driver->_curSpeed = dir * 1000000.0 / driver->_cn;
 
 			driver->_n += err;
@@ -338,7 +352,7 @@ void plannerPositionMode(DRIVER_StructDef* driver)
 		/* Особый случай первого шага при торможении */
 		if(driver->_k == driver->_s2)
 		{
-			driver->stepTime = (uint32_t)(driver->_cn) - STEP_TIME;
+			driver->stepTime = (uint32_t)(driver->_cn) - STEPPER_STEP_TIME;
 			driver->_curSpeed = dir * 1000000.0 / driver->_cn;
 
 			driver->_n --;
@@ -352,15 +366,15 @@ void plannerPositionMode(DRIVER_StructDef* driver)
  * 	и движение к указанной цели с максимальной скоростью
  * 	не поддерживает горячую смену целевой позиции
  */
-param_change_t setDriverTargetPos(DRIVER_StructDef* driver, int32_t target_pos)
+driver_param_change_t setDriverTargetPos(DRIVER_StructDef* driver, int32_t target_pos)
 {
 	uint32_t steps = abs(target_pos - driver->stepper->pos);
 
 	/* Если драйвер в режиме POSITION_MODE */
-	if(driver->_runMode != POSITION_MODE) return PARAM_CHANGE_ERR;
+	if(driver->_runMode != POSITION_MODE) return DRIVER_PARAM_CHANGE_ERR;
 
 	/* Если мотор в движении */
-	if(driver->_workState == DRIVER_RUN) return PARAM_CHANGE_ERR;
+	if(driver->_workState == DRIVER_RUN) return DRIVER_PARAM_CHANGE_ERR;
 
 	driver->_targetPosition = target_pos;
 
@@ -368,7 +382,7 @@ param_change_t setDriverTargetPos(DRIVER_StructDef* driver, int32_t target_pos)
 	{
 		driver->stepper->dir = (driver->_targetPosition > driver->stepper->pos) ? 1 : -1;
 
-		if (driver->_accel == 0 || driver->_maxSpeed < MIN_SPEED_POS_MODE)
+		if (driver->_accel == 0 || driver->_maxSpeed < MIN_SPEED_DRIVER)
 		{
 			driver->stepTime = 1000000.0 / driver->_maxSpeed;
 		}
@@ -395,29 +409,29 @@ param_change_t setDriverTargetPos(DRIVER_StructDef* driver, int32_t target_pos)
 		driver->_workState = DRIVER_RUN;
 	}
 
-	return PARAM_CHANGE_OK;
+	return DRIVER_PARAM_CHANGE_OK;
 }
 
 /** Установка целевой позиции (градусы)
  */
-param_change_t setDriverTargetPosDeg(DRIVER_StructDef* driver, float target_pos_deg)
+driver_param_change_t setDriverTargetPosDeg(DRIVER_StructDef* driver, float target_pos_deg)
 {
 	if(driver->_axisType == ROTATIONAL)
 	{
 		return setDriverTargetPos(driver, target_pos_deg * driver->_stepsPerDeg);
 	}
-	else return PARAM_CHANGE_ERR;
+	else return DRIVER_PARAM_CHANGE_ERR;
 }
 
 /** Установка целевой позиции (мм)
  */
-param_change_t setDriverTargetPosMm(DRIVER_StructDef* driver, float target_pos_mm)
+driver_param_change_t setDriverTargetPosMm(DRIVER_StructDef* driver, float target_pos_mm)
 {
 	if(driver->_axisType == LINEAR)
 	{
 		return setDriverTargetPos(driver, target_pos_mm * driver->_stepsPerMm);
 	}
-	else return PARAM_CHANGE_ERR;
+	else return DRIVER_PARAM_CHANGE_ERR;
 }
 
 /** Получение целевой позиции (шаги)
@@ -444,43 +458,43 @@ float getDriverTargetPosMm(DRIVER_StructDef* driver)
 /** Установка максимальной по модулю скорости для режима POSITION_MODE (шаги/с)
  *  по умолчанию 300 (шагов/c)
  */
-param_change_t setDriverMaxSpeed(DRIVER_StructDef* driver, float speed)
+driver_param_change_t setDriverMaxSpeed(DRIVER_StructDef* driver, float speed)
 {
-	if(driver->_workState == DRIVER_RUN) return PARAM_CHANGE_ERR;
+	if(driver->_workState == DRIVER_RUN) return DRIVER_PARAM_CHANGE_ERR;
 
-	/* Ограничения минимальной скорости - 1 шаг/час */
-	driver->_maxSpeed = fmax(fabs(speed), MIN_STEP_SPEED);
+	/* Ограничения минимальной скорости */
+	driver->_maxSpeed = fmax(fabs(speed), MIN_SPEED_DRIVER);
 
-	return PARAM_CHANGE_OK;
+	return DRIVER_PARAM_CHANGE_OK;
 }
 
 /** Установка максимальной по модулю скорости для режима POSITION_MODE (градусы/c)
  */
-param_change_t setDriverMaxSpeedDeg(DRIVER_StructDef* driver, float speed)
+driver_param_change_t setDriverMaxSpeedDeg(DRIVER_StructDef* driver, float speed)
 {
 	if(driver->_axisType == ROTATIONAL)
 	{
 		return setDriverMaxSpeed(driver, fabs(speed) * driver->_stepsPerDeg);
 	}
-	else return PARAM_CHANGE_ERR;
+	else return DRIVER_PARAM_CHANGE_ERR;
 }
 
 /** Установка максимальной по модулю скорости для режима POSITION_MODE (мм/c)
  */
-param_change_t setDriverMaxSpeedMm(DRIVER_StructDef* driver, float speed)
+driver_param_change_t setDriverMaxSpeedMm(DRIVER_StructDef* driver, float speed)
 {
 	if(driver->_axisType == LINEAR)
 	{
 		return setDriverMaxSpeed(driver, fabs(speed) * driver->_stepsPerMm);
 	}
-	else return PARAM_CHANGE_ERR;
+	else return DRIVER_PARAM_CHANGE_ERR;
 }
 
 /** Установка ускорения для режима POSITION_MODE (шаг/c^2)
  */
-param_change_t setDriverAcceleration(DRIVER_StructDef* driver, int16_t accel)
+driver_param_change_t setDriverAcceleration(DRIVER_StructDef* driver, int16_t accel)
 {
-	if(driver->_workState == DRIVER_RUN) return PARAM_CHANGE_ERR;
+	if(driver->_workState == DRIVER_RUN) return DRIVER_PARAM_CHANGE_ERR;
 
 	driver->_accel = abs(accel);
 
@@ -491,63 +505,63 @@ param_change_t setDriverAcceleration(DRIVER_StructDef* driver, int16_t accel)
 	}
 	else driver->_c0 = 0;
 
-	return PARAM_CHANGE_OK;
+	return DRIVER_PARAM_CHANGE_OK;
 }
 
 /** Установка ускорения для режима POSITION_MODE (градусы/c^2)
  */
-param_change_t setDriverAccelerationDeg(DRIVER_StructDef* driver, float accel)
+driver_param_change_t setDriverAccelerationDeg(DRIVER_StructDef* driver, float accel)
 {
 	if(driver->_axisType == ROTATIONAL)
 	{
 		return setDriverAcceleration(driver, accel * driver->_stepsPerDeg);
 	}
-	else return PARAM_CHANGE_ERR;
+	else return DRIVER_PARAM_CHANGE_ERR;
 }
 
 /** Установка ускорения для режима POSITION_MODE (мм/c^2)
  */
-param_change_t setDriverAccelerationMm(DRIVER_StructDef* driver, float accel)
+driver_param_change_t setDriverAccelerationMm(DRIVER_StructDef* driver, float accel)
 {
 	if(driver->_axisType == LINEAR)
 	{
 		return setDriverAcceleration(driver, accel * driver->_stepsPerMm);
 	}
-	else return PARAM_CHANGE_ERR;
+	else return DRIVER_PARAM_CHANGE_ERR;
 }
 
 /** Установка текущей позиции мотора (шаги)
  */
-param_change_t setDriverCurrentPos(DRIVER_StructDef* driver, int32_t pos)
+driver_param_change_t setDriverCurrentPos(DRIVER_StructDef* driver, int32_t pos)
 {
-	if(driver->_workState == DRIVER_RUN) return PARAM_CHANGE_ERR;
+	if(driver->_workState == DRIVER_RUN) return DRIVER_PARAM_CHANGE_ERR;
 
 	driver->stepper->pos = pos;
 	driver->_curSpeed = 0;
 
-	return PARAM_CHANGE_OK;
+	return DRIVER_PARAM_CHANGE_OK;
 }
 
 /** Установка текущей позиции мотора (градусы)
  */
-param_change_t setDriverCurrentPosDeg(DRIVER_StructDef* driver, float pos)
+driver_param_change_t setDriverCurrentPosDeg(DRIVER_StructDef* driver, float pos)
 {
 	if(driver->_axisType == ROTATIONAL)
 	{
 		return setDriverCurrentPos(driver, (float)pos * driver->_stepsPerDeg);
 	}
-	else return PARAM_CHANGE_ERR;
+	else return DRIVER_PARAM_CHANGE_ERR;
 }
 
 /** Установка текущей позиции мотора (мм)
  */
-param_change_t setDriverCurrentPosMm(DRIVER_StructDef* driver, float pos)
+driver_param_change_t setDriverCurrentPosMm(DRIVER_StructDef* driver, float pos)
 {
 	if(driver->_axisType == LINEAR)
 	{
 		return setDriverCurrentPos(driver, (float)pos * driver->_stepsPerMm);
 	}
-	else return PARAM_CHANGE_ERR;
+	else return DRIVER_PARAM_CHANGE_ERR;
 }
 
 /** Чтение текущей позиции мотора (шаги)
@@ -594,7 +608,7 @@ void plannerVelocityMode(DRIVER_StructDef* driver)
 	float err = driver->_targetSpeed - driver->_curSpeed;
 	int8_t dir = driver->stepper->dir;
 
-	if (driver->_stopFlag == true && fabs(driver->_curSpeed) <= MIN_STEP_SPEED)
+	if (driver->_stopFlag == true && fabs(driver->_curSpeed) <= MIN_SPEED_DRIVER)
 	{
 		brakeDriver(driver);
 		return;
@@ -627,7 +641,7 @@ void plannerVelocityMode(DRIVER_StructDef* driver)
 			}
 		}
 
-		driver->stepTime = (uint32_t)(driver->_cn) - STEP_TIME;
+		driver->stepTime = (uint32_t)(driver->_cn) - STEPPER_STEP_TIME;
 		driver->_curSpeed = dir * 1000000.0 / driver->_cn;
 
 		driver->_n += _signf(err * dir);
@@ -637,10 +651,10 @@ void plannerVelocityMode(DRIVER_StructDef* driver)
 /** Установка целевой скорости для режима VELOCITY_MODE (шаги/c)
  * 	в соответствии с минимальной скоростью, определенной в макросах
  */
-param_change_t setDriverTargetSpeed(DRIVER_StructDef* driver, float speed)
+driver_param_change_t setDriverTargetSpeed(DRIVER_StructDef* driver, float speed)
 {
 	/* Если драйвер в режиме POSITION_MODE */
-	if(driver->_runMode != VELOCITY_MODE) return PARAM_CHANGE_ERR;
+	if(driver->_runMode != VELOCITY_MODE) return DRIVER_PARAM_CHANGE_ERR;
 
 	driver->_targetSpeed = speed;
 	driver->_stopFlag = (driver->_targetSpeed == 0);
@@ -650,18 +664,18 @@ param_change_t setDriverTargetSpeed(DRIVER_StructDef* driver, float speed)
 		driver->stepTime = 0;
 		brakeDriver(driver);
 
-		return PARAM_CHANGE_OK;
+		return DRIVER_PARAM_CHANGE_OK;
 	}
 
 	driver->stepper->dir = (speed > 0) ? 1 : -1;
 
 	/* Ограничение минимальной скорости */
-	if (fabs(speed) < MIN_STEP_SPEED) driver->_targetSpeed = MIN_STEP_SPEED * driver->stepper->dir;
+	if (fabs(speed) < MIN_SPEED_DRIVER) driver->_targetSpeed = MIN_SPEED_DRIVER * driver->stepper->dir;
 
 	if(driver->_accel == 0)
 	{
 		driver->_curSpeed = driver->_targetSpeed;
-		driver->stepTime = fabs(1000000.0 / driver->_targetSpeed) - STEP_TIME;
+		driver->stepTime = fabs(1000000.0 / driver->_targetSpeed) - STEPPER_STEP_TIME;
 	}
 	else
 	{
@@ -674,29 +688,29 @@ param_change_t setDriverTargetSpeed(DRIVER_StructDef* driver, float speed)
 
 	driver->_workState = DRIVER_RUN;
 
-	return PARAM_CHANGE_OK;
+	return DRIVER_PARAM_CHANGE_OK;
 }
 
 /** Установка целевой скорости для режима VELOCITY_MODE (градусы/c)
  */
-param_change_t setDriverTargetSpeedDeg(DRIVER_StructDef* driver, float speed)
+driver_param_change_t setDriverTargetSpeedDeg(DRIVER_StructDef* driver, float speed)
 {
 	if(driver->_axisType == ROTATIONAL)
 	{
 		return setDriverTargetSpeed(driver, speed * driver->_stepsPerDeg);
 	}
-	else return PARAM_CHANGE_ERR;
+	else return DRIVER_PARAM_CHANGE_ERR;
 }
 
 /** Установка целевой скорости для режима VELOCITY_MODE (мм/c)
  */
-param_change_t setDriverTargetSpeedMm(DRIVER_StructDef* driver, float speed)
+driver_param_change_t setDriverTargetSpeedMm(DRIVER_StructDef* driver, float speed)
 {
 	if(driver->_axisType == LINEAR)
 	{
 		return setDriverTargetSpeed(driver, speed * driver->_stepsPerMm);
 	}
-	else return PARAM_CHANGE_ERR;
+	else return DRIVER_PARAM_CHANGE_ERR;
 }
 
 

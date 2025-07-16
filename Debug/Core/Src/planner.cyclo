@@ -4,8 +4,8 @@
 ../Core/Src/planner.c:136:6:plannerVelocity	9
 ../Core/Src/planner.c:171:6:plannerPhase	4
 ../Core/Src/planner.c:188:6:calculatePlannerInitialParam	4
-../Core/Src/planner.c:217:16:setPlannerAcceleration	3
-../Core/Src/planner.c:237:16:setPlannerMaxSpeed	2
+../Core/Src/planner.c:217:24:setPlannerAcceleration	3
+../Core/Src/planner.c:237:24:setPlannerMaxSpeed	2
 ../Core/Src/planner.c:249:6:addDriver	1
 ../Core/Src/planner.c:256:6:enablePlanner	2
 ../Core/Src/planner.c:266:6:disablePlanner	2
@@ -14,6 +14,6 @@
 ../Core/Src/planner.c:313:6:resumePlanner	1
 ../Core/Src/planner.c:324:6:stopPlanner	1
 ../Core/Src/planner.c:331:6:brakePlanner	1
-../Core/Src/planner.c:363:16:setCurrentAxes	2
-../Core/Src/planner.c:376:16:setCurrentPosAxis	1
+../Core/Src/planner.c:363:24:setCurrentAxes	2
+../Core/Src/planner.c:376:24:setCurrentPosAxis	1
 ../Core/Src/planner.c:386:9:getCurrentPosAxis	1

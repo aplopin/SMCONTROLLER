@@ -22,62 +22,14 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include <stdbool.h>
-#include <string.h>
+#include "libs.h"
 
-#include "dwt.h"
-#include "fifo.h"
-#include "fifo_char.h"
-#include "net.h"
-#include "planner.h"
-#include "gcode.h"
+#include "stdbool.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-struct UDP_COMMANDS_StructDef
-{
-	/* Команды для переинициализации буфера G - кода */
-	char* test1;
-	char* test2;
-	char* test3;
-	char* test4;
-	char* circle;
-	char* example;
 
-	/* Команды для запуска/паузы/возобновления/остановки работы станка */
-	char* start;
-	char* pause;
-	char* resume;
-	char* stop;
-
-	/* Команды задания параметров планировщика - скорости/ускорения */
-	char* setPlannerMaxSpeed; // 18 символов
-	char* setPlannerAcceleration; // 22 символа
-
-	/* Команды для ручного управления*/
-	char* setDriverRunMode;
-
-	char* setDriverAcceleration;
-	char* setDriverAccelerationDeg;
-	char* setDriverAccelerationMm;
-
-	char* setDriverMaxSpeed;
-	char* setDriverMaxSpeedDeg;
-	char* setDriverMaxSpeedMm;
-
-	char* setDriverTargetPos;
-	char* setDriverTargetPosDeg;
-	char* setDriverTargetPosMm;
-
-} udpcommands = {"test1", "test2", "test3", "test4", "circle", "example", \
-				 "start", "pause", "resume", "stop", \
-				 "setPlannerMaxSpeed", "setPlannerAcceleration", \
-				 "setDriverRunMode", \
-				 "setDriverAcceleration", "setDriverAccelerationDeg", "setDriverAccelerationMm", \
-				 "setDriverMaxSpeed", "setDriverMaxSpeedDeg" , "setDriverMaxSpeedMm", \
-				 "setDriverTargetPos", "setDriverTargetPosDeg", "setDriverTargetPosMm", \
-				};
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -119,10 +71,13 @@ extern struct netif gnetif;
 extern int32_t counter;
 
 /* Импортированный буфер входящих по UDP данных из библиотеки net.h */
-extern char rxBuf[128];
+extern char rxUdpCharBuf[128];
 
 /* Импортированный FIFO буфер сетевого интерфейса UDP из библиотеки het.h */
 extern FIFO_StructDef fifoNetBuf;
+
+/* Импортированная структура UDP команд для отладки из библиотеки het.h */
+extern UDP_COMMANDS_StructDef udpcommands;
 
 /* Импортированный FIFO буфер G - команд из библиотеки gcode.h */
 extern FIFO_CHAR_StructDef fifoGcodeBuf;
@@ -179,7 +134,7 @@ void startTimerTIM1(void);
 /** Функция обработки входящих сообщений по UDP
  * 	описание в main.c необходимо для вызова функций других библиотек
  */
-void udpReceiveHandler(void);
+void udpReceiveHandlerEcho(void);
 
 /** Тестовая функция для проверки пинов STEP - DIR
  */
@@ -230,9 +185,6 @@ STEPPER_PINS_StructDef stepper6_pins = {(GPIO_StructDef_custom*)STEP7_GPIO_Port,
 STEPPER_PINS_StructDef stepper7_pins = {(GPIO_StructDef_custom*)STEP8_GPIO_Port, STEP8_Pin, \
 										(GPIO_StructDef_custom*)DIR8_GPIO_Port, DIR8_Pin};
 
-/* Структуры шаговых моторов */
-STEPPER_StructDef stepper[8];
-
 /* Структуры пинов концевых переключателей и датчика нуля драйверов шаговых моторов */
 DRIVER_LIMIT_SWITCH_PINS_StructDef driver0_pins = {(GPIO_StructDef_custom*)EXTI_1_LS1_N_GPIO_Port, EXTI_1_LS1_N_Pin, NORMALLY_OPEN, \
 												   (GPIO_StructDef_custom*)ZERO_POS1_GPIO_Port, ZERO_POS1_Pin, NORMALLY_OPEN, \
@@ -266,16 +218,25 @@ DRIVER_LIMIT_SWITCH_PINS_StructDef driver7_pins = {(GPIO_StructDef_custom*)EXTI_
 												   (GPIO_StructDef_custom*)ZERO_POS8_GPIO_Port, ZERO_POS8_Pin, NORMALLY_OPEN, \
 												   (GPIO_StructDef_custom*)EXTI_14_LS8_P_GPIO_Port, EXTI_14_LS8_P_Pin, NORMALLY_OPEN};
 
+/* Структура пинов лазера */
+LASER_PINS_StructDef laser_pins = {(GPIO_StructDef_custom*)LED_STATE_GPIO_Port, LED_STATE_Pin}; //< Для теста используется пины светодиода на плате контроллера
+
+/* Структуры шаговых моторов */
+STEPPER_StructDef stepper[8];
+
 /* Структуры драйверов шаговых моторов */
 DRIVER_StructDef driver[8];
 
 /* Экземпляр структуры планировщика*/
 PLANNER_StructDef planner;
 
+/* Экземпляр структуры лазера */
+LASER_StructDef laser;
+
 /* Экземпляр структуры обработчика g - кода */
 HANDLER_GCODE_StructDef ghandler;
 
-/* Flag вкоючения обработки */
+/* Flag включения обработки */
 bool _runFlag = false;
 /* USER CODE END 0 */
 
@@ -328,10 +289,10 @@ int main(void)
   DWT_Init();
 
   /* Инициализация UDP сокета */
-  udpSocketInit();
+  UDP_Init();
 
-  /* Инициализация указателей на функции HAL для работы библиотек stepper.h и driver.h */
-  stepperFunctionsInit(function_pin_1);
+  /* Инициализация указателей на функции HAL для работы библиотек pin.h и driver.h */
+  pinFunctionsInit(function_pin_1);
   driverFunctionsInit(function_time_1, function_time_2, function_time_3, function_time_4);
 
   /* Инициализация шаговых моторов */
@@ -339,8 +300,8 @@ int main(void)
   stepperInit(&stepper[1], &stepper1_pins);
 
   /* Инициализация драйверов шаговых моторов */
-  driverInit(&driver[0], &stepper[0], &driver0_pins, 800, LINEAR);
-  driverInit(&driver[1], &stepper[1], &driver1_pins, 800, LINEAR);
+  driverInit(&driver[0], &stepper[0], &driver0_pins, 800, LINEAR, 'X');
+  driverInit(&driver[1], &stepper[1], &driver1_pins, 800, LINEAR, 'Y');
 
   /* Инициализация планировщика*/
   plannerInit(&planner);
@@ -348,6 +309,9 @@ int main(void)
 
   /* Инициализация обработчика g - команд*/
   handlerGcodeInit(&ghandler);
+
+  /* Инициализация лазера */
+  laserInit(&laser, &laser_pins);
 
   /* ----------------------------------------------- Инициализация -------------------------------------------- */
 
@@ -1101,22 +1065,22 @@ uint32_t getMicrosecondsTIM2(void)
 /**
  *
  */
-void udpReceiveHandler(void)
+void udpReceiveHandlerEcho(void)
 {
 	/* Буфер данных для отправки ответного сообщения по UDP */
 	char data[256];
 
 	/* Тестовые функции переинициализации буфера G - кода */
-	if(strcmp(rxBuf, udpcommands.test1) == 0)
+	if(strcmp(rxUdpCharBuf, udpcommands.test1) == 0)
 	{
 		/* Проверка уже запущенного процесса работы станка */
 		if(_runFlag == true)
 		{
 			sprintf(data, "%ld - STM32: Attention! The machine is running, unable to complete test!\n", counter);
 
-			udpClientSend(data);
+			udpClientSendResponseChar(data);
 
-			memset(rxBuf, 0, 128);
+			memset(rxUdpCharBuf, 0, 128);
 			return;
 		}
 
@@ -1130,22 +1094,22 @@ void udpReceiveHandler(void)
 
 		sprintf(data, "%ld - STM32: Test - 1 has been initialized!\n", counter);
 
-		udpClientSend(data);
+		udpClientSendResponseChar(data);
 
-		memset(rxBuf, 0, 128);
+		memset(rxUdpCharBuf, 0, 128);
 		return;
 	}
 
-	if(strcmp(rxBuf, udpcommands.test2) == 0)
+	if(strcmp(rxUdpCharBuf, udpcommands.test2) == 0)
 	{
 		/* Проверка уже запущенного процесса работы станка */
 		if(_runFlag == true)
 		{
 			sprintf(data, "%ld - STM32: Attention! The machine is running, unable to complete test!\n", counter);
 
-			udpClientSend(data);
+			udpClientSendResponseChar(data);
 
-			memset(rxBuf, 0, 128);
+			memset(rxUdpCharBuf, 0, 128);
 			return;
 		}
 
@@ -1159,22 +1123,22 @@ void udpReceiveHandler(void)
 
 		sprintf(data, "%ld - STM32: Test - 2 has been initialized!\n", counter);
 
-		udpClientSend(data);
+		udpClientSendResponseChar(data);
 
-		memset(rxBuf, 0, 128);
+		memset(rxUdpCharBuf, 0, 128);
 		return;
 	}
 
-	if(strcmp(rxBuf, udpcommands.test3) == 0)
+	if(strcmp(rxUdpCharBuf, udpcommands.test3) == 0)
 	{
 		/* Проверка уже запущенного процесса работы станка */
 		if(_runFlag == true)
 		{
 			sprintf(data, "%ld - STM32: Attention! The machine is running, unable to complete test!\n", counter);
 
-			udpClientSend(data);
+			udpClientSendResponseChar(data);
 
-			memset(rxBuf, 0, 128);
+			memset(rxUdpCharBuf, 0, 128);
 			return;
 		}
 
@@ -1188,22 +1152,22 @@ void udpReceiveHandler(void)
 
 		sprintf(data, "%ld - STM32: Test - 3 has been initialized!\n", counter);
 
-		udpClientSend(data);
+		udpClientSendResponseChar(data);
 
-		memset(rxBuf, 0, 128);
+		memset(rxUdpCharBuf, 0, 128);
 		return;
 	}
 
-	if(strcmp(rxBuf, udpcommands.test4) == 0)
+	if(strcmp(rxUdpCharBuf, udpcommands.test4) == 0)
 	{
 		/* Проверка уже запущенного процесса работы станка */
 		if(_runFlag == true)
 		{
 			sprintf(data, "%ld - STM32: Attention! The machine is running, unable to complete test!\n", counter);
 
-			udpClientSend(data);
+			udpClientSendResponseChar(data);
 
-			memset(rxBuf, 0, 128);
+			memset(rxUdpCharBuf, 0, 128);
 			return;
 		}
 
@@ -1217,22 +1181,22 @@ void udpReceiveHandler(void)
 
 		sprintf(data, "%ld - STM32: Test - 4 has been initialized!\n", counter);
 
-		udpClientSend(data);
+		udpClientSendResponseChar(data);
 
-		memset(rxBuf, 0, 128);
+		memset(rxUdpCharBuf, 0, 128);
 		return;
 	}
 
-	if(strcmp(rxBuf, udpcommands.circle) == 0)
+	if(strcmp(rxUdpCharBuf, udpcommands.circle) == 0)
 	{
 		/* Проверка уже запущенного процесса работы станка */
 		if(_runFlag == true)
 		{
 			sprintf(data, "%ld - STM32: Attention! The machine is running, unable to complete test!\n", counter);
 
-			udpClientSend(data);
+			udpClientSendResponseChar(data);
 
-			memset(rxBuf, 0, 128);
+			memset(rxUdpCharBuf, 0, 128);
 			return;
 		}
 
@@ -1246,22 +1210,22 @@ void udpReceiveHandler(void)
 
 		sprintf(data, "%ld - STM32: Circle has been initialized!\n", counter);
 
-		udpClientSend(data);
+		udpClientSendResponseChar(data);
 
-		memset(rxBuf, 0, 128);
+		memset(rxUdpCharBuf, 0, 128);
 		return;
 	}
 
-	if(strcmp(rxBuf, udpcommands.example) == 0)
+	if(strcmp(rxUdpCharBuf, udpcommands.example) == 0)
 	{
 		/* Проверка уже запущенного процесса работы станка */
 		if(_runFlag == true)
 		{
 			sprintf(data, "%ld - STM32: Attention! The machine is running, unable to complete test!\n", counter);
 
-			udpClientSend(data);
+			udpClientSendResponseChar(data);
 
-			memset(rxBuf, 0, 128);
+			memset(rxUdpCharBuf, 0, 128);
 			return;
 		}
 
@@ -1275,23 +1239,23 @@ void udpReceiveHandler(void)
 
 		sprintf(data, "%ld - STM32: Example has been initialized!\n", counter);
 
-		udpClientSend(data);
+		udpClientSendResponseChar(data);
 
-		memset(rxBuf, 0, 128);
+		memset(rxUdpCharBuf, 0, 128);
 		return;
 	}
 
 	/* Запуск процесса работы станка */
-	if(strcmp(rxBuf, udpcommands.start) == 0)
+	if(strcmp(rxUdpCharBuf, udpcommands.start) == 0)
 	{
 		/* Проверка уже запущенного процесса работы станка */
 		if(_runFlag == true)
 		{
 			sprintf(data, "%ld - STM32: Attention! The machine is already running!\n", counter);
 
-			udpClientSend(data);
+			udpClientSendResponseChar(data);
 
-			memset(rxBuf, 0, 128);
+			memset(rxUdpCharBuf, 0, 128);
 			return;
 		}
 
@@ -1299,9 +1263,9 @@ void udpReceiveHandler(void)
 		{
 			sprintf(data, "%ld - STM32: G-code program is empty!\n", counter);
 
-			udpClientSend(data);
+			udpClientSendResponseChar(data);
 
-			memset(rxBuf, 0, 128);
+			memset(rxUdpCharBuf, 0, 128);
 			return;
 		}
 
@@ -1312,23 +1276,23 @@ void udpReceiveHandler(void)
 
 		sprintf(data, "%ld - STM32: The process has been started!\n", counter);
 
-		udpClientSend(data);
+		udpClientSendResponseChar(data);
 
-		memset(rxBuf, 0, 128);
+		memset(rxUdpCharBuf, 0, 128);
 		return;
 	}
 
 	/* Запуск приостановки работы станка */
-	if(strcmp(rxBuf, udpcommands.pause) == 0)
+	if(strcmp(rxUdpCharBuf, udpcommands.pause) == 0)
 	{
 		/* Проверка запущенного процесса работы станка */
 		if(_runFlag == false)
 		{
 			sprintf(data, "%ld - STM32: Attention! The machine is not running!\n", counter);
 
-			udpClientSend(data);
+			udpClientSendResponseChar(data);
 
-			memset(rxBuf, 0, 128);
+			memset(rxUdpCharBuf, 0, 128);
 			return;
 		}
 
@@ -1337,23 +1301,23 @@ void udpReceiveHandler(void)
 
 		sprintf(data, "%ld - STM32: The process has been paused!\n", counter);
 
-		udpClientSend(data);
+		udpClientSendResponseChar(data);
 
-		memset(rxBuf, 0, 128);
+		memset(rxUdpCharBuf, 0, 128);
 		return;
 	}
 
 	/* Запуск возобновления процесса работы станка */
-	if(strcmp(rxBuf, udpcommands.resume) == 0)
+	if(strcmp(rxUdpCharBuf, udpcommands.resume) == 0)
 	{
 		/* Проверка запущенного процесса работы станка */
 		if(_runFlag == false)
 		{
 			sprintf(data, "%ld - STM32: Attention! The machine is not running!\n", counter);
 
-			udpClientSend(data);
+			udpClientSendResponseChar(data);
 
-			memset(rxBuf, 0, 128);
+			memset(rxUdpCharBuf, 0, 128);
 			return;
 		}
 
@@ -1362,23 +1326,23 @@ void udpReceiveHandler(void)
 
 		sprintf(data, "%ld - STM32: The process has been resumed!\n", counter);
 
-		udpClientSend(data);
+		udpClientSendResponseChar(data);
 
-		memset(rxBuf, 0, 128);
+		memset(rxUdpCharBuf, 0, 128);
 		return;
 	}
 
 	/* Запуск резкой остановки процесса работы станка с возможностью продолжения процесса */
-	if(strcmp(rxBuf, udpcommands.stop) == 0)
+	if(strcmp(rxUdpCharBuf, udpcommands.stop) == 0)
 	{
 		/* Проверка запущенного процесса работы станка */
 		if(_runFlag == false)
 		{
 			sprintf(data, "%ld - STM32: Attention! The machine is not running!\n", counter);
 
-			udpClientSend(data);
+			udpClientSendResponseChar(data);
 
-			memset(rxBuf, 0, 128);
+			memset(rxUdpCharBuf, 0, 128);
 			return;
 		}
 
@@ -1387,70 +1351,70 @@ void udpReceiveHandler(void)
 
 		sprintf(data, "%ld - STM32: The process has been stopped!\n", counter);
 
-		udpClientSend(data);
+		udpClientSendResponseChar(data);
 
-		memset(rxBuf, 0, 128);
+		memset(rxUdpCharBuf, 0, 128);
 		return;
 	}
 
-	if(strncmp(rxBuf, udpcommands.setPlannerAcceleration, strlen(udpcommands.setPlannerAcceleration)) == 0)
+	if(strncmp(rxUdpCharBuf, udpcommands.setPlannerAcceleration, strlen(udpcommands.setPlannerAcceleration)) == 0)
 	{
 		/* Проверка запущенного процесса работы станка */
 		if(_runFlag == true)
 		{
 			sprintf(data, "%ld - STM32: Error changing! The machine is running!\n", counter);
 
-			udpClientSend(data);
+			udpClientSendResponseChar(data);
 
-			memset(rxBuf, 0, 128);
+			memset(rxUdpCharBuf, 0, 128);
 			return;
 		}
 
-		float acceleration = atof(strchr(rxBuf, ' ') + 1);
+		float acceleration = atof(strchr(rxUdpCharBuf, ' ') + 1);
 		setPlannerAcceleration(&planner, acceleration);
 
 		sprintf(data, "%ld - STM32: Planner acceleration = %ld (steps/sec^2);\n", counter, planner._accel);
 
-		udpClientSend(data);
+		udpClientSendResponseChar(data);
 
-		memset(rxBuf, 0, 128);
+		memset(rxUdpCharBuf, 0, 128);
 		return;
 	}
 
-	if(strncmp(rxBuf, udpcommands.setPlannerMaxSpeed, strlen(udpcommands.setPlannerMaxSpeed)) == 0)
+	if(strncmp(rxUdpCharBuf, udpcommands.setPlannerMaxSpeed, strlen(udpcommands.setPlannerMaxSpeed)) == 0)
 	{
 		/* Проверка запущенного процесса работы станка */
 		if(_runFlag == true)
 		{
 			sprintf(data, "%ld - STM32: Error changing! The machine is running!\n", counter);
 
-			udpClientSend(data);
+			udpClientSendResponseChar(data);
 
-			memset(rxBuf, 0, 128);
+			memset(rxUdpCharBuf, 0, 128);
 			return;
 		}
 
-		float speed = atof(strchr(rxBuf, ' ') + 1);
+		float speed = atof(strchr(rxUdpCharBuf, ' ') + 1);
 		setPlannerMaxSpeed(&planner, speed);
 
 		sprintf(data, "%ld - STM32: Planner max speed = %ld (steps/sec^2);\n", counter, planner._maxSpeed);
 
-		udpClientSend(data);
+		udpClientSendResponseChar(data);
 
-		memset(rxBuf, 0, 128);
+		memset(rxUdpCharBuf, 0, 128);
 		return;
 	}
 
 	/* Задать _runMode */
-	if(strncmp(rxBuf, udpcommands.setDriverRunMode, strlen(udpcommands.setDriverRunMode)) == 0)
+	if(strncmp(rxUdpCharBuf, udpcommands.setDriverRunMode, strlen(udpcommands.setDriverRunMode)) == 0)
 	{
-		int8_t axis = atoi(strchr(rxBuf, ' ') + 1);
-		if(rxBuf[strlen(udpcommands.setDriverRunMode) + 3] == 'V')
+		int8_t axis = atoi(strchr(rxUdpCharBuf, ' ') + 1);
+		if(rxUdpCharBuf[strlen(udpcommands.setDriverRunMode) + 3] == 'V')
 		{
 			sprintf(data, "%ld - STM32: Movement mode driver - %d = VELOCITY_MODE;\n", counter, axis);
 			setDriverRunMode(&driver[axis], VELOCITY_MODE);
 		}
-		else if(rxBuf[strlen(udpcommands.setDriverRunMode) + 3] == 'P')
+		else if(rxUdpCharBuf[strlen(udpcommands.setDriverRunMode) + 3] == 'P')
 		{
 			sprintf(data, "%ld - STM32: Movement mode driver - %d = POSITION_MODE;\n", counter, axis);
 			setDriverRunMode(&driver[axis], POSITION_MODE);
@@ -1460,202 +1424,202 @@ void udpReceiveHandler(void)
 			sprintf(data, "%ld - STM32: Error changing movement mode of driver - %d;\n", counter, axis);
 		}
 
-		udpClientSend(data);
+		udpClientSendResponseChar(data);
 
-		memset(rxBuf, 0, 128);
+		memset(rxUdpCharBuf, 0, 128);
 		return;
 	}
 
 	/* Задать ускорение _accel драйвера оси axis */
-	if(strncmp(rxBuf, udpcommands.setDriverAccelerationDeg, strlen(udpcommands.setDriverAccelerationDeg)) == 0)
+	if(strncmp(rxUdpCharBuf, udpcommands.setDriverAccelerationDeg, strlen(udpcommands.setDriverAccelerationDeg)) == 0)
 	{
-		int8_t axis = atoi(strchr(rxBuf, ' ') + 1);
-		float acceleration = atof(strchr(rxBuf, ' ') + 3);
+		int8_t axis = atoi(strchr(rxUdpCharBuf, ' ') + 1);
+		float acceleration = atof(strchr(rxUdpCharBuf, ' ') + 3);
 
-		if(setDriverAccelerationDeg(&driver[axis], acceleration) == PARAM_CHANGE_OK)
+		if(setDriverAccelerationDeg(&driver[axis], acceleration) == DRIVER_PARAM_CHANGE_OK)
 		{
 			sprintf(data, "%ld - STM32: Acceleration of driver %d = %d (deg/sec^2);\n", counter, axis, (int16_t)acceleration);
 		}
 		else sprintf(data, "%ld - STM32: Error changing acceleration of driver - %d;\n", counter, axis);
 
-		udpClientSend(data);
+		udpClientSendResponseChar(data);
 
-		memset(rxBuf, 0, 128);
+		memset(rxUdpCharBuf, 0, 128);
 		return;
 	}
 
-	if(strncmp(rxBuf, udpcommands.setDriverAccelerationMm, strlen(udpcommands.setDriverAccelerationMm)) == 0)
+	if(strncmp(rxUdpCharBuf, udpcommands.setDriverAccelerationMm, strlen(udpcommands.setDriverAccelerationMm)) == 0)
 	{
-		int8_t axis = atoi(strchr(rxBuf, ' ') + 1);
-		float acceleration = atof(strchr(rxBuf, ' ') + 3);
+		int8_t axis = atoi(strchr(rxUdpCharBuf, ' ') + 1);
+		float acceleration = atof(strchr(rxUdpCharBuf, ' ') + 3);
 
-		if(setDriverAccelerationMm(&driver[axis], acceleration) == PARAM_CHANGE_OK)
+		if(setDriverAccelerationMm(&driver[axis], acceleration) == DRIVER_PARAM_CHANGE_OK)
 		{
 			sprintf(data, "%ld - STM32: Acceleration of driver %d = %d (mm/sec^2);\n", counter, axis, (int16_t)acceleration);
 		}
 		else sprintf(data, "%ld - STM32: Error changing acceleration of driver - %d;\n", counter, axis);
 
-		udpClientSend(data);
+		udpClientSendResponseChar(data);
 
-		memset(rxBuf, 0, 128);
+		memset(rxUdpCharBuf, 0, 128);
 		return;
 	}
 
-	if(strncmp(rxBuf, udpcommands.setDriverAcceleration, strlen(udpcommands.setDriverAcceleration)) == 0)
+	if(strncmp(rxUdpCharBuf, udpcommands.setDriverAcceleration, strlen(udpcommands.setDriverAcceleration)) == 0)
 	{
-		int8_t axis = atoi(strchr(rxBuf, ' ') + 1);
-		int16_t acceleration = atol(strchr(rxBuf, ' ') + 3);
+		int8_t axis = atoi(strchr(rxUdpCharBuf, ' ') + 1);
+		int16_t acceleration = atol(strchr(rxUdpCharBuf, ' ') + 3);
 
-		if(setDriverAcceleration(&driver[axis], acceleration) == PARAM_CHANGE_OK)
+		if(setDriverAcceleration(&driver[axis], acceleration) == DRIVER_PARAM_CHANGE_OK)
 		{
 			sprintf(data, "%ld - STM32: Acceleration of driver %d = %d (steps/sec^2);\n", counter, axis, acceleration);
 		}
 		else sprintf(data, "%ld - STM32: Error changing acceleration of driver - %d;\n", counter, axis);
 
-		udpClientSend(data);
+		udpClientSendResponseChar(data);
 
-		memset(rxBuf, 0, 128);
+		memset(rxUdpCharBuf, 0, 128);
 		return;
 	}
 
 	/* ---------------------- POSITION_MODE ---------------------- */
 
 	/* Установить максимальную скорость _maxSpeed оси axis */
-	if(strncmp(rxBuf, udpcommands.setDriverMaxSpeedDeg, strlen(udpcommands.setDriverMaxSpeedDeg)) == 0)
+	if(strncmp(rxUdpCharBuf, udpcommands.setDriverMaxSpeedDeg, strlen(udpcommands.setDriverMaxSpeedDeg)) == 0)
 	{
-		int8_t axis = atoi(strchr(rxBuf, ' ') + 1);
-		float speed = atof(strchr(rxBuf, ' ') + 3);
+		int8_t axis = atoi(strchr(rxUdpCharBuf, ' ') + 1);
+		float speed = atof(strchr(rxUdpCharBuf, ' ') + 3);
 
-		if(setDriverMaxSpeedDeg(&driver[axis], speed) == PARAM_CHANGE_OK)
+		if(setDriverMaxSpeedDeg(&driver[axis], speed) == DRIVER_PARAM_CHANGE_OK)
 		{
 			sprintf(data, "%ld - STM32: Max speed of driver %d = %d (deg/sec);\n", counter, axis, (int16_t)speed);
 		}
 		else sprintf(data, "%ld - STM32: Error changing max speed of driver - %d;\n", counter, axis);
 
-		udpClientSend(data);
+		udpClientSendResponseChar(data);
 
-		memset(rxBuf, 0, 128);
+		memset(rxUdpCharBuf, 0, 128);
 		return;
 	}
 
-	if(strncmp(rxBuf, udpcommands.setDriverMaxSpeedMm, strlen(udpcommands.setDriverMaxSpeedMm)) == 0)
+	if(strncmp(rxUdpCharBuf, udpcommands.setDriverMaxSpeedMm, strlen(udpcommands.setDriverMaxSpeedMm)) == 0)
 	{
-		int8_t axis = atoi(strchr(rxBuf, ' ') + 1);
-		float speed = atof(strchr(rxBuf, ' ') + 3);
+		int8_t axis = atoi(strchr(rxUdpCharBuf, ' ') + 1);
+		float speed = atof(strchr(rxUdpCharBuf, ' ') + 3);
 
-		if(setDriverMaxSpeedMm(&driver[axis], speed) == PARAM_CHANGE_OK)
+		if(setDriverMaxSpeedMm(&driver[axis], speed) == DRIVER_PARAM_CHANGE_OK)
 		{
 			sprintf(data, "%ld - STM32: Max speed of driver %d = %d (mm/sec);\n", counter, axis, (int16_t)speed);
 		}
 		else sprintf(data, "%ld - STM32: Error changing max speed of driver - %d;\n", counter, axis);
 
-		udpClientSend(data);
+		udpClientSendResponseChar(data);
 
-		memset(rxBuf, 0, 128);
+		memset(rxUdpCharBuf, 0, 128);
 		return;
 	}
 
-	if(strncmp(rxBuf, udpcommands.setDriverMaxSpeed, strlen(udpcommands.setDriverMaxSpeed)) == 0)
+	if(strncmp(rxUdpCharBuf, udpcommands.setDriverMaxSpeed, strlen(udpcommands.setDriverMaxSpeed)) == 0)
 	{
-		int8_t axis = atoi(strchr(rxBuf, ' ') + 1);
-		float speed = atof(strchr(rxBuf, ' ') + 3);
+		int8_t axis = atoi(strchr(rxUdpCharBuf, ' ') + 1);
+		float speed = atof(strchr(rxUdpCharBuf, ' ') + 3);
 
-		if(setDriverMaxSpeed(&driver[axis], speed) == PARAM_CHANGE_OK)
+		if(setDriverMaxSpeed(&driver[axis], speed) == DRIVER_PARAM_CHANGE_OK)
 		{
 			sprintf(data, "%ld - STM32: Max speed of driver %d = %d (steps/sec);\n", counter, axis, (int16_t)speed);
 		}
 		else sprintf(data, "%ld - STM32: Error changing max speed of driver - %d;\n", counter, axis);
 
-		udpClientSend(data);
+		udpClientSendResponseChar(data);
 
-		memset(rxBuf, 0, 128);
+		memset(rxUdpCharBuf, 0, 128);
 		return;
 	}
 
 	/* Установить целевую позицию _targetPosition оси axis */
-	if(strncmp(rxBuf, udpcommands.setDriverTargetPosDeg, strlen(udpcommands.setDriverTargetPosDeg)) == 0)
+	if(strncmp(rxUdpCharBuf, udpcommands.setDriverTargetPosDeg, strlen(udpcommands.setDriverTargetPosDeg)) == 0)
 	{
-		int8_t axis = atoi(strchr(rxBuf, ' ') + 1);
-		float target_pos = atof(strchr(rxBuf, ' ') + 3);
+		int8_t axis = atoi(strchr(rxUdpCharBuf, ' ') + 1);
+		float target_pos = atof(strchr(rxUdpCharBuf, ' ') + 3);
 
-		if(setDriverTargetPosDeg(&driver[axis], target_pos) == PARAM_CHANGE_OK)
+		if(setDriverTargetPosDeg(&driver[axis], target_pos) == DRIVER_PARAM_CHANGE_OK)
 		{
 			sprintf(data, "%ld - STM32: Target position of driver %d = %ld (deg);\n", counter, axis, (int32_t)target_pos);
 		}
 		else sprintf(data, "%ld - STM32: Error changing target position of driver - %d;\n", counter, axis);
 
-		udpClientSend(data);
+		udpClientSendResponseChar(data);
 
-		memset(rxBuf, 0, 128);
+		memset(rxUdpCharBuf, 0, 128);
 		return;
 	}
 
-	if(strncmp(rxBuf, udpcommands.setDriverTargetPosMm, strlen(udpcommands.setDriverTargetPosMm)) == 0)
+	if(strncmp(rxUdpCharBuf, udpcommands.setDriverTargetPosMm, strlen(udpcommands.setDriverTargetPosMm)) == 0)
 	{
-		int8_t axis = atoi(strchr(rxBuf, ' ') + 1);
-		float target_pos = atof(strchr(rxBuf, ' ') + 3);
+		int8_t axis = atoi(strchr(rxUdpCharBuf, ' ') + 1);
+		float target_pos = atof(strchr(rxUdpCharBuf, ' ') + 3);
 
-		if(setDriverTargetPosMm(&driver[axis], target_pos) == PARAM_CHANGE_OK)
+		if(setDriverTargetPosMm(&driver[axis], target_pos) == DRIVER_PARAM_CHANGE_OK)
 		{
 			sprintf(data, "%ld - STM32: Target position of driver %d = %ld (mm);\n", counter, axis, (int32_t)target_pos);
 		}
 		else sprintf(data, "%ld - STM32: Error changing target position of driver - %d;\n", counter, axis);
 
-		udpClientSend(data);
+		udpClientSendResponseChar(data);
 
-		memset(rxBuf, 0, 128);
+		memset(rxUdpCharBuf, 0, 128);
 		return;
 	}
 
-	if(strncmp(rxBuf, udpcommands.setDriverTargetPos, strlen(udpcommands.setDriverTargetPos)) == 0)
+	if(strncmp(rxUdpCharBuf, udpcommands.setDriverTargetPos, strlen(udpcommands.setDriverTargetPos)) == 0)
 	{
-		int8_t axis = atoi(strchr(rxBuf, ' ') + 1);
-		int32_t target_pos = atol(strchr(rxBuf, ' ') + 3);
+		int8_t axis = atoi(strchr(rxUdpCharBuf, ' ') + 1);
+		int32_t target_pos = atol(strchr(rxUdpCharBuf, ' ') + 3);
 
-		if(setDriverTargetPos(&driver[axis], target_pos) == PARAM_CHANGE_OK)
+		if(setDriverTargetPos(&driver[axis], target_pos) == DRIVER_PARAM_CHANGE_OK)
 		{
 			sprintf(data, "%ld - STM32: Target position of driver %d = %ld (steps);\n", counter, axis, target_pos);
 		}
 		else sprintf(data, "%ld - STM32: Error changing target position of driver - %d;\n", counter, axis);
 
-		udpClientSend(data);
+		udpClientSendResponseChar(data);
 
-		memset(rxBuf, 0, 128);
+		memset(rxUdpCharBuf, 0, 128);
 		return;
 	}
 
-	if(rxBuf[0] == 'S')
+	if(rxUdpCharBuf[0] == 'S')
 	{
 		/* VELOCITY_MODE */
-		if(rxBuf[1] == 'T' && rxBuf[2] == 'S') // Задать целевую скорость
+		if(rxUdpCharBuf[1] == 'T' && rxUdpCharBuf[2] == 'S') // Задать целевую скорость
 		{
-			int16_t speed = strtol(&rxBuf[3], NULL, 10);
+			int16_t speed = strtol(&rxUdpCharBuf[3], NULL, 10);
 			setDriverTargetSpeedDeg(&driver[0], speed);
 
 			sprintf(data, "%ld - STM32: Target velocity (deg/sec) = %d;\n", counter, speed);
-			udpClientSend(data);
+			udpClientSendResponseChar(data);
 
-			memset(rxBuf, 0, 128);
+			memset(rxUdpCharBuf, 0, 128);
 			return;
 		}
 	}
 
-	if(rxBuf[0] == 'G')
+	if(rxUdpCharBuf[0] == 'G')
 	{
-		if(rxBuf[1] == 'C' && rxBuf[2] == 'P') // Получить позицию
+		if(rxUdpCharBuf[1] == 'C' && rxUdpCharBuf[2] == 'P') // Получить позицию
 		{
 			sprintf(data, "%ld - STM32: Current position = %ld;\n", counter, (int32_t)getDriverCurrentPosDeg(&driver[0]));
-			udpClientSend(data);
+			udpClientSendResponseChar(data);
 
-			memset(rxBuf, 0, 128);
+			memset(rxUdpCharBuf, 0, 128);
 			return;
 		}
 	}
 
-	sprintf(data, "%ld - STM32: Echo - %s\n", counter, rxBuf);
-	udpClientSend(data);
+	sprintf(data, "%ld - STM32: Echo - %s\n", counter, rxUdpCharBuf);
+	udpClientSendResponseChar(data);
 
-	memset(rxBuf, 0, 128);
+	memset(rxUdpCharBuf, 0, 128);
 	return;
 }
 

@@ -6,45 +6,9 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#define STEP_TIME 5 		//< Время переключения состояния пина STEP в мкс (по-умолчанию 5 мкс)
+#include "pin.h"
 
-/* Тип данных - состояние пина DIO из стандартной библиотеки HAL STM32
- * для использования в данной библиотеке
- */
-typedef enum
-{
-	PIN_RESET = 0,
-	PIN_SET
-
-} pin_state_custom_t;
-
-/* Тип данных - состояние пина EN
- * OFF - мотор выключен
- * ON - мотор включен
- */
-typedef enum
-{
-	OFF = 0,
-	ON
-
-} statusEn_t;
-
-/* Определение структуры порта DIO из стандартной библиотеки HAL STM32
- * для использования указателей GPIO_TypeDef *GPIOx
- */
-typedef struct
-{
-	volatile uint32_t MODER;
-	volatile uint32_t OTYPER;
-	volatile uint32_t OSPEEDR;
-	volatile uint32_t PUPDR;
-	volatile uint32_t IDR;
-	volatile uint32_t ODR;
-	volatile uint32_t BSRR;
-	volatile uint32_t LCKR;
-	volatile uint32_t AFR[2];
-
-} GPIO_StructDef_custom;
+#define STEPPER_STEP_TIME 	5 		//< Время переключения состояния пина STEP (мкс)
 
 /* Определение структуры пинов шагового мотора STEP - DIR - EN */
 typedef struct
@@ -68,7 +32,7 @@ typedef struct
 typedef struct
 {
 	/* Экземпляр структуры пинов */
-	STEPPER_PINS_StructDef stepper_pins;
+	STEPPER_PINS_StructDef* stepper_pins;
 
 	/* Текущая позиция мотора в шагах */
 	volatile int32_t pos;
@@ -96,14 +60,13 @@ typedef void (*writePinFunction_void_ptr)(GPIO_StructDef_custom*, uint16_t, pin_
 
 /* --------------------------------------- Прототипы функций библиотеки stepper.h --------------------------------------- */
 
-void stepperFunctionsInit(writePinFunction_void_ptr function);
 void stepperInit(STEPPER_StructDef* stepper, STEPPER_PINS_StructDef* pins);
 void step(STEPPER_StructDef* stepper);
-void setDir(STEPPER_StructDef* stepper, int8_t dir);
+void setStepperDir(STEPPER_StructDef* stepper, int8_t dir);
 void enableStepper(STEPPER_StructDef* stepper);
 void disableStepper(STEPPER_StructDef* stepper);
-void invertPinEn(STEPPER_StructDef* stepper);
-void invertPinDir(STEPPER_StructDef* stepper);
+void invertStepperPinEn(STEPPER_StructDef* stepper);
+void invertStepperPinDir(STEPPER_StructDef* stepper);
 
 /* --------------------------------------- Прототипы функций библиотеки stepper.h --------------------------------------- */
 

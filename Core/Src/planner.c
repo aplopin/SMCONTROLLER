@@ -158,7 +158,7 @@ void plannerVelocity(PLANNER_StructDef* planner)
 				planner->_cn = planner->_cn * (1 - phase * 2.0 / (4.0 * planner->_n + phase));
 			}
 
-			planner->stepTime = (uint32_t)(planner->_cn) - STEP_TIME;
+			planner->stepTime = (uint32_t)(planner->_cn) - STEPPER_STEP_TIME;
 			planner->_curSpeed = 1000000.0 / planner->_cn;
 
 			planner->_n += phase;
@@ -189,7 +189,7 @@ void calculatePlannerInitialParam(PLANNER_StructDef* planner)
 {
 	uint32_t steps;
 
-	if (planner->_accel == 0 || planner->_maxSpeed < MIN_SPEED_POS_MODE)
+	if (planner->_accel == 0 || planner->_maxSpeed < MIN_SPEED_DRIVER)
 	{
 		planner->stepTime = 1000000.0 / planner->_maxSpeed;
 		planner->_phase = UNIFORM;
@@ -214,9 +214,9 @@ void calculatePlannerInitialParam(PLANNER_StructDef* planner)
 
 /** Установить ускорение планировщика (мм/c^2)
  */
-param_change_t setPlannerAcceleration(PLANNER_StructDef* planner, float accel)
+planner_param_change_t setPlannerAcceleration(PLANNER_StructDef* planner, float accel)
 {
-	if(planner->_workState == PLANNER_RUN) return PARAM_CHANGE_ERR;
+	if(planner->_workState == PLANNER_RUN) return PLANNER_PARAM_CHANGE_ERR;
 
 	/* Перевод единиц измерения ускорения в шаги/с^2 для 800 шагов на оборот мотора */
 	planner->_accel = fabs(accel) * 160;
@@ -228,20 +228,20 @@ param_change_t setPlannerAcceleration(PLANNER_StructDef* planner, float accel)
 	}
 	else planner->_c0 = 0;
 
-	return PARAM_CHANGE_OK;
+	return PLANNER_PARAM_CHANGE_OK;
 }
 
 /** Установка максимальной скорости планировщика (мм/c^2)
  *
  */
-param_change_t setPlannerMaxSpeed(PLANNER_StructDef* planner, float speed)
+planner_param_change_t setPlannerMaxSpeed(PLANNER_StructDef* planner, float speed)
 {
-	if(planner->_workState == PLANNER_RUN) return PARAM_CHANGE_ERR;
+	if(planner->_workState == PLANNER_RUN) return PLANNER_PARAM_CHANGE_ERR;
 
 	/* Перевод максимальной скорости в шаги/с^2 */
 	planner->_maxSpeed = fabs(speed) * 160;
 
-	return PARAM_CHANGE_OK;
+	return PLANNER_PARAM_CHANGE_OK;
 }
 
 /** Подключить драйвер мотора driver на ось axis к планировщику
@@ -360,20 +360,20 @@ void setSpeedPlanner(uint8_t axis, float speed);   //
 /** Установить текущее положение всех осей!
  *
  */
-param_change_t setCurrentAxes(PLANNER_StructDef* planner, int32_t pos[])
+planner_param_change_t setCurrentAxes(PLANNER_StructDef* planner, int32_t pos[])
 {
 	for(uint8_t i = 0; i < AXES; i ++)
 	{
-		if(setDriverCurrentPos(planner->driver[i], pos[i]) != PARAM_CHANGE_OK);
-		return PARAM_CHANGE_ERR;
+		if(setDriverCurrentPos(planner->driver[i], pos[i]) != DRIVER_PARAM_CHANGE_OK);
+		return PLANNER_PARAM_CHANGE_ERR;
 	}
 
-	return PARAM_CHANGE_OK;
+	return PLANNER_PARAM_CHANGE_OK;
 }
 
 /** Установить текущую позицию одной оси!
  */
-param_change_t setCurrentPosAxis(PLANNER_StructDef* planner, uint8_t axis, int32_t pos)
+planner_param_change_t setCurrentPosAxis(PLANNER_StructDef* planner, uint8_t axis, int32_t pos)
 {
 	return setDriverCurrentPos(planner->driver[axis], pos);
 }
